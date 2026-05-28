@@ -1,0 +1,54 @@
+mode: paper  # paper | testnet | live
+
+exchanges:
+  binance:
+    enabled: true
+    testnet: false
+    ws_url: "wss://fstream.binance.com/ws"
+    rest_url: "https://fapi.binance.com"
+    rate_limit_per_minute: 1200
+  hyperliquid:
+    enabled: false
+    ws_url: "wss://api.hyperliquid.xyz/ws"
+    rest_url: "https://api.hyperliquid.xyz"
+  aster:
+    enabled: false
+    ws_url: "wss://fapi.aster.finance/ws"
+    rest_url: "https://fapi.aster.finance"
+
+market_data:
+  symbols: ["BTCUSDT"]
+  intervals: ["1m", "5m", "15m", "1h"]
+  db_path: "data/marketdata.db"
+
+strategies:
+  btc_multi_indicator:
+    enabled: true
+    symbol: "BTCUSDT"
+    timeframe: "5m"
+    max_position_usdt: 10000
+    signal_threshold: 0.6
+    tp_pct: 0.03       # 止盈 3%
+    sl_pct: 0.015      # 止损 1.5%
+  funding_arb:
+    enabled: false
+    min_funding_spread: 0.0002   # 最小套利价差 0.02%
+    max_position_usdt: 5000
+
+risk:
+  max_position_usdt: 20000
+  max_single_order_usdt: 5000
+  max_daily_loss_usdt: 1000
+  max_consecutive_losses: 5
+  price_deviation_pct: 0.05    # 行情异常保护 5%
+  disconnect_reduce_only: true # 断线后只允许减仓
+
+execution:
+  order_timeout_s: 30
+  max_retry: 3
+  retry_delay_s: 1.0
+
+logging:
+  level: INFO
+  file: "logs/trader.log"
+  rotation: "1 day"

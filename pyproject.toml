@@ -1,0 +1,59 @@
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[project]
+name = "trade-btc"
+version = "0.1.0"
+description = "Multi-exchange crypto trading system: BTC multi-indicator + funding-rate arb"
+requires-python = ">=3.11"
+dependencies = [
+    "aiohttp>=3.9",
+    "websockets>=12.0",
+    "pandas>=2.1",
+    "numpy>=1.26",
+    "pandas-ta>=0.3.14b",
+    "sqlalchemy>=2.0",
+    "aiosqlite>=0.19",
+    "pydantic>=2.5",
+    "pydantic-settings>=2.1",
+    "pyyaml>=6.0",
+    "toml>=0.10",
+    "cryptography>=41.0",
+    "python-dotenv>=1.0",
+    "click>=8.1",
+    "structlog>=23.2",
+    "eth-account>=0.10",
+    "eth-abi>=4.2",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.4",
+    "pytest-asyncio>=0.23",
+    "pytest-mock>=3.12",
+    "ruff>=0.1",
+    "mypy>=1.7",
+    "coverage>=7.3",
+]
+
+[project.scripts]
+trader = "apps.trader.main:cli"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src", "apps"]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+select = ["E", "F", "I", "UP", "B", "SIM"]
+ignore = ["E501"]
+
+[tool.mypy]
+python_version = "3.11"
+strict = false
+ignore_missing_imports = true
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
