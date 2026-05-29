@@ -21,6 +21,7 @@ from src.core.logging import configure_logging, get_logger
 from src.core.mode import ModeGuard
 from src.core.models import Exchange, TradingMode
 from src.core.secrets import load_secrets
+from src.core.telegram import init_notifier
 from src.risk.manager import RiskConfig, RiskManager
 
 
@@ -39,6 +40,19 @@ async def _run_paper_btc(config: dict) -> None:
 
     strat_cfg = config.get("strategies", {}).get("btc_multi_indicator", {})
     risk_cfg_raw = config.get("risk", {})
+    tg_cfg = config.get("telegram", {})
+
+    # 初始化 Telegram 通知器
+    secrets = load_secrets()
+    tg_token = secrets.telegram.bot_token or tg_cfg.get("bot_token", "")
+    tg_chat = secrets.telegram.chat_id or tg_cfg.get("chat_id", "")
+    tg_enabled = tg_cfg.get("enabled", True) and bool(tg_token) and bool(tg_chat)
+    notifier = init_notifier(token=tg_token, chat_id=tg_chat, enabled=tg_enabled)
+
+    if tg_enabled:
+        logger.info("telegram_notifier_enabled", chat_id=tg_chat)
+    else:
+        logger.info("telegram_notifier_disabled")
 
     # 初始化组件
     paper_ex = PaperExchange(
@@ -55,7 +69,7 @@ async def _run_paper_btc(config: dict) -> None:
     ))
 
     mode_guard = ModeGuard(TradingMode.PAPER)
-    router = ExecutionRouter(paper_ex, risk, mode_guard)
+    router = ExecutionRouter(paper_ex, risk, mode_guard, notifier=notifier)
 
     strategy = BTCMultiIndicatorStrategy(
         symbol=strat_cfg.get("symbol", "BTCUSDT"),
@@ -70,7 +84,6 @@ async def _run_paper_btc(config: dict) -> None:
     feed = MarketDataFeed(storage)
 
     # 用真实 Binance 行情（只读，不下单）
-    secrets = load_secrets()
     binance = BinanceConnector(
         api_key=secrets.binance.api_key,
         api_secret=secrets.binance.api_secret,
@@ -78,6 +91,9 @@ async def _run_paper_btc(config: dict) -> None:
     )
     await binance.connect()
     feed.register_exchange("binance", binance)
+
+    # 把 notifier 注入 position_book，用于平仓通知
+    paper_ex.position_book.set_notifier(notifier)
 
     # 订阅行情事件
     bus = get_bus()
@@ -105,6 +121,17 @@ async def _run_paper_btc(config: dict) -> None:
     await feed.subscribe("binance", symbol, "1m")
 
     logger.info("paper_btc_running", symbol=symbol, mode="paper")
+
+    # 系统启动通知
+    if tg_enabled:
+        notifier.notify_system(
+            f"BTC 纸交易系统已启动\n"
+            f"品种：{symbol}\n"
+            f"策略：BTC 多指标 v1\n"
+            f"行情来源：Binance fapi 实时 1m K线\n"
+            f"开仓/平仓将实时推送至此"
+        )
+
     await get_bus().run()
 
 

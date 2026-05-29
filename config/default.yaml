@@ -52,3 +52,8 @@ logging:
   level: INFO
   file: "logs/trader.log"
   rotation: "1 day"
+
+telegram:
+  enabled: true          # false 则禁用通知
+  bot_token: ""          # 覆盖于 secrets.local.yaml
+  chat_id: ""            # 覆盖于 secrets.local.yaml

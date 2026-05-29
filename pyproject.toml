@@ -12,7 +12,8 @@ dependencies = [
     "websockets>=12.0",
     "pandas>=2.1",
     "numpy>=1.26",
-    "pandas-ta>=0.3.14b",
+    # pandas-ta: optional, 0.3.x 不在 PyPI，0.4.x 需要 Python>=3.12
+    # 指标库使用内置纯-pandas 实现作为默认路径
     "sqlalchemy>=2.0",
     "aiosqlite>=0.19",
     "pydantic>=2.5",

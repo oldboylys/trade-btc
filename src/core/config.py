@@ -28,11 +28,11 @@ def load_config(config_dir: str | Path | None = None) -> dict[str, Any]:
 
     cfg: dict[str, Any] = {}
     if default_path.exists():
-        with open(default_path) as f:
+        with open(default_path, encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
 
     if secrets_path.exists():
-        with open(secrets_path) as f:
+        with open(secrets_path, encoding="utf-8") as f:
             secrets = yaml.safe_load(f) or {}
         cfg = _deep_merge(cfg, secrets)
 

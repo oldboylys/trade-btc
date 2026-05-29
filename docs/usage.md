@@ -96,7 +96,7 @@ ASTER_API_SECRET=xxx
 - API Key 可不配置（只订阅公开行情）
 
 ```bash
-trader --mode paper --strategy btc
+trader --mode paper --strategy btc --log-level INFO
 ```
 
 ### testnet（测试网）
@@ -133,6 +133,7 @@ trader --mode live --strategy btc
 | MACD 柱 | 12/26/9 | 0.25 | MACD 柱 > 0 | MACD 柱 < 0 |
 | RSI | 14 周期 | 0.20 | RSI 在 40~65 | RSI > 70 或 < 35 |
 | 布林带位置 | 20/2σ | 0.15 | 价格 > 中轨 | 价格 < 中轨 |
+
 | 成交量 | MA20 倍率 | 0.15 | 量比 ≥ 1.2 | 量比 ≥ 1.2（双向增强） |
 
 **1h 趋势过滤**：若 1h EMA20/50 方向与信号相反，对应得分惩罚 -0.30。
@@ -274,3 +275,6 @@ A: 确保已安装 `eth_account` 和 `eth_abi`（`pip install eth-account eth-ab
 
 **Q: 如何增加新的交易所？**
 A: 继承 `src/connectors/base.py` 中的 `IExchange` 并实现所有抽象方法，然后在 `ExecutionRouter` 中注册即可，无需修改策略层。
+
+## 看板
+如果还是看不到，可以在 Cursor 中按 Ctrl+Shift+P 打开命令面板，输入 canvas 查找相关命令打开 Canvas 面板。btc-trading-dashboard

@@ -43,10 +43,23 @@ class AsterSecrets:
 
 
 @dataclass
+class TelegramSecrets:
+    bot_token: str = "7811254208:AAGbd0NZUZC_nv5B2IwiqyOTV5IdP7-_Sys"
+    chat_id: str = "7902172509"
+
+    def is_configured(self) -> bool:
+        return bool(self.bot_token and self.chat_id)
+
+    def get(self, key: str, default: str = "") -> str:
+        return getattr(self, key, default)
+
+
+@dataclass
 class AllSecrets:
     binance: BinanceSecrets
     hyperliquid: HyperliquidSecrets
     aster: AsterSecrets
+    telegram: TelegramSecrets
 
 
 def load_secrets(config_dir: str | Path | None = None) -> AllSecrets:
@@ -61,17 +74,25 @@ def load_secrets(config_dir: str | Path | None = None) -> AllSecrets:
     config_dir = Path(config_dir)
 
     raw: dict = {}
+    raw_tg: dict = {}
     secrets_path = config_dir / "secrets.local.yaml"
     if secrets_path.exists():
-        with open(secrets_path) as f:
+        with open(secrets_path, encoding="utf-8") as f:
             data = yaml.safe_load(f) or {}
         raw = data.get("exchanges", {})
+        raw_tg = data.get("telegram", {})
 
     def _get(section: str, key: str, env_var: str) -> str:
         env_val = os.environ.get(env_var, "")
         if env_val:
             return env_val
         return raw.get(section, {}).get(key, "")
+
+    def _get_tg(key: str, env_var: str) -> str:
+        env_val = os.environ.get(env_var, "")
+        if env_val:
+            return env_val
+        return raw_tg.get(key, "")
 
     return AllSecrets(
         binance=BinanceSecrets(
@@ -85,5 +106,9 @@ def load_secrets(config_dir: str | Path | None = None) -> AllSecrets:
         aster=AsterSecrets(
             api_key=_get("aster", "api_key", "ASTER_API_KEY"),
             api_secret=_get("aster", "api_secret", "ASTER_API_SECRET"),
+        ),
+        telegram=TelegramSecrets(
+            bot_token=_get_tg("bot_token", "TELEGRAM_BOT_TOKEN"),
+            chat_id=_get_tg("chat_id", "TELEGRAM_CHAT_ID"),
         ),
     )

@@ -19,6 +19,11 @@ from src.risk.manager import RiskAction, RiskManager
 
 logger = get_logger("execution.router")
 
+try:
+    from src.core.telegram import TelegramNotifier
+except ImportError:
+    TelegramNotifier = None  # type: ignore
+
 
 class ExecutionRouter:
     """
@@ -36,12 +41,14 @@ class ExecutionRouter:
         mode_guard: ModeGuard,
         order_timeout_s: float = 30.0,
         max_retry: int = 3,
+        notifier: Optional["TelegramNotifier"] = None,
     ) -> None:
         self.exchange = exchange
         self.risk = risk
         self.mode_guard = mode_guard
         self.order_timeout_s = order_timeout_s
         self.max_retry = max_retry
+        self.notifier = notifier
         self._pending: dict[str, str] = {}  # symbol -> client_order_id
         self._tp_sl_orders: dict[str, list[str]] = {}  # symbol -> [tp_oid, sl_oid]
 
@@ -99,7 +106,7 @@ class ExecutionRouter:
     ) -> None:
         if target_direction == SignalDirection.FLAT:
             if current_qty > 0:
-                await self._close_position(symbol, current_side, current_qty, mark_price)
+                await self._close_position(symbol, current_side, current_qty, mark_price, reason="信号平仓")
             return
 
         target_pos_side = (
@@ -108,7 +115,7 @@ class ExecutionRouter:
 
         # 若持仓方向不一致，先平仓
         if current_side and current_side != target_pos_side and current_qty > 0:
-            await self._close_position(symbol, current_side, current_qty, mark_price)
+            await self._close_position(symbol, current_side, current_qty, mark_price, reason="信号反转")
             current_qty = Decimal("0")
 
         delta = target_qty - current_qty
@@ -116,6 +123,32 @@ class ExecutionRouter:
             return  # 无需操作
 
         order_side = OrderSide.BUY if target_direction == SignalDirection.LONG else OrderSide.SELL
+        direction_label = "多头 LONG" if target_direction == SignalDirection.LONG else "空头 SHORT"
+        notional = round(float(delta * mark_price), 2)
+
+        print(
+            f"\n{'='*60}\n"
+            f"  【开 仓】{symbol}  {direction_label}\n"
+            f"  数量   : {float(delta):.4f} BTC\n"
+            f"  开仓价 : ${float(mark_price):,.2f}\n"
+            f"  名义仓位: ${notional:,.2f} USDT\n"
+            + (f"  止盈价 : ${float(tp_price):,.2f}\n" if tp_price else "  止盈价 : --\n")
+            + (f"  止损价 : ${float(sl_price):,.2f}\n" if sl_price else "  止损价 : --\n")
+            + f"{'='*60}\n"
+        )
+
+        # Telegram 开仓通知
+        if self.notifier:
+            self.notifier.notify_open(
+                symbol=symbol,
+                direction=direction_label,
+                qty=float(delta),
+                price=float(mark_price),
+                notional=notional,
+                tp_price=float(tp_price) if tp_price else None,
+                sl_price=float(sl_price) if sl_price else None,
+            )
+
         await self._place_order_with_retry(
             Order(
                 client_order_id=str(uuid.uuid4()),
@@ -138,10 +171,24 @@ class ExecutionRouter:
         side: Optional[PositionSide],
         qty: Decimal,
         mark_price: Decimal,
+        reason: str = "平仓",
     ) -> None:
         close_side = (
             OrderSide.SELL if side == PositionSide.LONG else OrderSide.BUY
         )
+        direction_label = "多头 LONG" if side == PositionSide.LONG else "空头 SHORT"
+        notional = round(float(qty * mark_price), 2)
+
+        print(
+            f"\n{'─'*60}\n"
+            f"  【平 仓】{symbol}  平{direction_label}  原因: {reason}\n"
+            f"  数量   : {float(qty):.4f} BTC\n"
+            f"  平仓价 : ${float(mark_price):,.2f}\n"
+            f"  名义仓位: ${notional:,.2f} USDT\n"
+            f"  (PnL 详情见下方持仓账本输出)\n"
+            f"{'─'*60}\n"
+        )
+
         # 先撤掉已挂的 TP/SL 单
         await self._cancel_tp_sl(symbol)
         await self._place_order_with_retry(
