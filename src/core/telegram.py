@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import ssl
 import urllib.parse
 import urllib.request
 from concurrent.futures import ThreadPoolExecutor
@@ -30,7 +31,11 @@ def _send_sync(token: str, chat_id: str, text: str) -> None:
         headers={"Content-Type": "application/json"},
         method="POST",
     )
-    with urllib.request.urlopen(req, timeout=10) as resp:
+    # 代理环境下代理 CA 不在 certifi 信任链内，对通知流量跳过证书校验
+    _ssl_ctx = ssl.create_default_context()
+    _ssl_ctx.check_hostname = False
+    _ssl_ctx.verify_mode = ssl.CERT_NONE
+    with urllib.request.urlopen(req, timeout=10, context=_ssl_ctx) as resp:
         body = resp.read()
         result = json.loads(body)
         if not result.get("ok"):

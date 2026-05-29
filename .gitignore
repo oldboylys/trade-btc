@@ -18,3 +18,4 @@ data/
 .coverage
 coverage.xml
 htmlcov/
+.venv/
