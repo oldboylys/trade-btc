@@ -2,7 +2,10 @@
 from __future__ import annotations
 
 import asyncio
-from decimal import Decimal
+import json
+import urllib.parse
+import urllib.request
+from concurrent.futures import ThreadPoolExecutor
 from typing import Optional
 
 from src.core.logging import get_logger
@@ -10,43 +13,49 @@ from src.core.logging import get_logger
 logger = get_logger("core.telegram")
 
 _SEND_URL = "https://api.telegram.org/bot{token}/sendMessage"
+_executor = ThreadPoolExecutor(max_workers=2, thread_name_prefix="tg_sender")
+
+
+def _send_sync(token: str, chat_id: str, text: str) -> None:
+    """同步发送（在线程池中执行，不阻塞事件循环）."""
+    url = _SEND_URL.format(token=token)
+    payload = json.dumps({
+        "chat_id": chat_id,
+        "text": text,
+        "parse_mode": "HTML",
+        "disable_web_page_preview": True,
+    }).encode("utf-8")
+    req = urllib.request.Request(
+        url, data=payload,
+        headers={"Content-Type": "application/json"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=10) as resp:
+        body = resp.read()
+        result = json.loads(body)
+        if not result.get("ok"):
+            logger.warning("telegram_send_failed", description=result.get("description", ""))
 
 
 class TelegramNotifier:
     """
-    异步 Telegram 通知器。
-    所有发送操作均为 fire-and-forget（不阻塞策略主循环）。
+    异步 Telegram 通知器（基于线程池 + urllib，兼容 Windows）。
+    所有发送操作均为 fire-and-forget，不阻塞策略主循环。
     """
 
     def __init__(self, token: str, chat_id: str, enabled: bool = True) -> None:
         self.token = token
         self.chat_id = chat_id
         self.enabled = enabled and bool(token) and bool(chat_id)
-        self._session: Optional[object] = None  # aiohttp.ClientSession
-
-    async def _get_session(self):
-        if self._session is None or self._session.closed:  # type: ignore[union-attr]
-            import aiohttp
-            self._session = aiohttp.ClientSession()
-        return self._session
 
     async def _send(self, text: str) -> None:
+        """异步发送（线程池执行，await 会等待完成）."""
         if not self.enabled:
             return
         try:
-            import aiohttp
-            session = await self._get_session()
-            url = _SEND_URL.format(token=self.token)
-            payload = {
-                "chat_id": self.chat_id,
-                "text": text,
-                "parse_mode": "HTML",
-                "disable_web_page_preview": True,
-            }
-            async with session.post(url, json=payload, timeout=aiohttp.ClientTimeout(total=8)) as resp:
-                if resp.status != 200:
-                    body = await resp.text()
-                    logger.warning("telegram_send_failed", status=resp.status, body=body[:200])
+            loop = asyncio.get_event_loop()
+            await loop.run_in_executor(_executor, _send_sync, self.token, self.chat_id, text)
+            logger.info("telegram_sent", chars=len(text))
         except Exception as exc:
             logger.warning("telegram_error", error=str(exc))
 
@@ -125,8 +134,7 @@ class TelegramNotifier:
         self.send_nowait(text)
 
     async def close(self) -> None:
-        if self._session and not self._session.closed:  # type: ignore[union-attr]
-            await self._session.close()
+        pass  # 线程池由模块级 _executor 管理，进程退出时自动清理
 
 
 # 全局单例

@@ -55,5 +55,5 @@ logging:
 
 telegram:
   enabled: true          # false 则禁用通知
-  bot_token: ""          # 覆盖于 secrets.local.yaml
-  chat_id: ""            # 覆盖于 secrets.local.yaml
+  bot_token: "7811254208:AAGbd0NZUZC_nv5B2IwiqyOTV5IdP7-_Sys"          # 覆盖于 secrets.local.yaml
+  chat_id: "7902172509"            # 覆盖于 secrets.local.yaml
