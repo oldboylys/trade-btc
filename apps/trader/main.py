@@ -24,6 +24,8 @@ from src.core.models import Exchange, TradingMode
 from src.core.secrets import load_secrets
 from src.core.telegram import init_notifier
 from src.risk.manager import RiskConfig, RiskManager
+from src.web.status_store import init_store
+from src.web.server import start_server
 
 
 logger = get_logger("trader.main")
@@ -42,6 +44,10 @@ async def _run_paper_btc(config: dict) -> None:
     strat_cfg = config.get("strategies", {}).get("btc_multi_indicator", {})
     risk_cfg_raw = config.get("risk", {})
     tg_cfg = config.get("telegram", {})
+    web_cfg = config.get("web", {})
+
+    # 初始化状态存储
+    store = init_store(mode="paper", strategy="btc_multi_indicator", symbol=strat_cfg.get("symbol", "BTCUSDT"))
 
     # 初始化 Telegram 通知器
     secrets = load_secrets()
@@ -93,25 +99,51 @@ async def _run_paper_btc(config: dict) -> None:
     await binance.connect()
     feed.register_exchange("binance", binance)
 
-    # 把 notifier 注入 position_book，用于平仓通知
+    # 把 notifier 和 store 注入 position_book
     paper_ex.position_book.set_notifier(notifier)
+    paper_ex.position_book.set_store(store)
+
+    # 风控参数写入 store
+    store.daily_loss_limit = float(risk_cfg_raw.get("max_daily_loss_usdt", 1000))
+    store.max_position_usdt = float(strat_cfg.get("max_position_usdt", 10000))
 
     # 订阅行情事件
     bus = get_bus()
 
     async def on_kline_closed(kline) -> None:
         paper_ex.feed_kline(kline)
+
+        # 更新状态存储：行情价格
+        store.mark_price = float(kline.close)
+        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+        store.balance = float(paper_ex.balance)
+        store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
+        store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
+        store.total_fee = float(paper_ex.position_book.total_fee)
+
+        # 更新持仓状态
+        pos_entry = paper_ex.position_book.get_position(kline.symbol)
+        if pos_entry and pos_entry.qty > 0:
+            store.has_position = True
+            store.pos_side = pos_entry.side.value
+            store.pos_qty = float(pos_entry.qty)
+            store.pos_entry_price = float(pos_entry.entry_price)
+            store.pos_mark_price = float(pos_entry.mark_price)
+            store.pos_upnl = float(pos_entry.unrealized_pnl)
+        else:
+            store.has_position = False
+
         target = strategy.on_kline(kline)
         if target is not None:
             await router.execute(target)
-            pos = paper_ex.position_book.get_position(kline.symbol)
-            if pos:
+            pos_entry = paper_ex.position_book.get_position(kline.symbol)
+            if pos_entry:
                 logger.info(
                     "position_snapshot",
                     symbol=kline.symbol,
-                    qty=float(pos.qty),
-                    entry=float(pos.entry_price),
-                    upnl=float(pos.unrealized_pnl),
+                    qty=float(pos_entry.qty),
+                    entry=float(pos_entry.entry_price),
+                    upnl=float(pos_entry.unrealized_pnl),
                     balance=float(paper_ex.balance),
                 )
 
@@ -172,6 +204,11 @@ async def _run_paper_btc(config: dict) -> None:
                 await notifier._send(msg)
             logger.info("hourly_status_sent", balance=float(bal), upnl=float(upnl))
 
+    # ── 启动 Web Dashboard 服务 ────────────────────────────
+    web_host = web_cfg.get("host", "127.0.0.1")
+    web_port = int(web_cfg.get("port", 8080))
+    web_runner = await start_server(host=web_host, port=web_port)
+
     # ── 启动后台任务并运行主循环 ──────────────────────────
     hourly_task = asyncio.ensure_future(_hourly_status_task())
 
@@ -179,6 +216,7 @@ async def _run_paper_btc(config: dict) -> None:
         await get_bus().run()
     finally:
         hourly_task.cancel()
+        await web_runner.cleanup()
         # 断开通知
         stop_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         if tg_enabled:

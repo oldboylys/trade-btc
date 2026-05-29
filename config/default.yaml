@@ -55,5 +55,9 @@ logging:
 
 telegram:
   enabled: true          # false 则禁用通知
-  bot_token: "7811254208:AAGbd0NZUZC_nv5B2IwiqyOTV5IdP7-_Sys"          # 覆盖于 secrets.local.yaml
-  chat_id: "7902172509"            # 覆盖于 secrets.local.yaml
+  bot_token: ""          # 填写于 secrets.local.yaml，禁止硬编码在此
+  chat_id: ""            # 填写于 secrets.local.yaml，禁止硬编码在此
+
+web:
+  host: "127.0.0.1"     # 改为 0.0.0.0 可局域网访问
+  port: 8080

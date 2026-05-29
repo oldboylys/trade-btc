@@ -66,9 +66,14 @@ class PositionBook:
         self._daily_realized_pnl: Decimal = Decimal("0")
         self._total_fee: Decimal = Decimal("0")
         self._notifier: Optional["_TelegramNotifier"] = None
+        self._store: Optional[object] = None
+        self._open_time: dict[str, str] = {}  # symbol -> open_time str
 
     def set_notifier(self, notifier: "_TelegramNotifier") -> None:
         self._notifier = notifier
+
+    def set_store(self, store: object) -> None:
+        self._store = store
 
     def on_fill(self, fill: Fill) -> None:
         key = fill.symbol
@@ -88,6 +93,9 @@ class PositionBook:
 
         if pos.qty == 0:
             # 开新仓
+            import datetime as _dt
+            open_time_str = _dt.datetime.now().strftime("%m-%d %H:%M")
+            self._open_time[fill.symbol] = open_time_str
             pos.side = PositionSide.LONG if fill.side == OrderSide.BUY else PositionSide.SHORT
             pos.qty = fill.qty
             pos.entry_price = fill.price
@@ -156,6 +164,26 @@ class PositionBook:
                     net_pnl=round(float(net_pnl), 2),
                     total_realized=round(float(pos.realized_pnl), 2),
                 )
+
+                # 更新 Web 状态存储（成交记录）
+                if self._store is not None:
+                    import datetime as _dt
+                    close_time_str = _dt.datetime.now().strftime("%m-%d %H:%M")
+                    open_time_str = self._open_time.pop(fill.symbol, "--")
+                    self._store.add_trade(
+                        direction=pos.side.value,
+                        qty=float(closed_qty),
+                        open_time=open_time_str,
+                        open_price=float(entry_price),
+                        close_time=close_time_str,
+                        close_price=float(fill.price),
+                        tp=float(pos.mark_price),  # 实际TP/SL需从router传入，此处用标记价占位
+                        sl=0.0,
+                        gross_pnl=float(pnl),
+                        fee=float(fee),
+                        net_pnl=float(net_pnl),
+                        close_reason="平仓",
+                    )
 
                 # Telegram 平仓通知
                 if self._notifier:
