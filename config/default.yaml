@@ -57,6 +57,7 @@ telegram:
   enabled: true          # false 则禁用通知
   bot_token: ""          # 填写于 secrets.local.yaml，禁止硬编码在此
   chat_id: ""            # 填写于 secrets.local.yaml，禁止硬编码在此
+  hourly_interval_sec: 3600  # 持仓状态推送间隔（秒），启动后立即发第一条
 
 web:
   host: "127.0.0.1"     # 改为 0.0.0.0 可局域网访问

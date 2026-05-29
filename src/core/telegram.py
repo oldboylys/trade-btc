@@ -154,3 +154,16 @@ def init_notifier(token: str, chat_id: str, enabled: bool = True) -> TelegramNot
 
 def get_notifier() -> Optional[TelegramNotifier]:
     return _notifier
+
+
+def send_message_sync(token: str, chat_id: str, text: str) -> bool:
+    """同步发送（用于 atexit / 信号处理等无法 await 的场景）."""
+    if not token or not chat_id:
+        return False
+    try:
+        _send_sync(token, chat_id, text)
+        logger.info("telegram_sent_sync", chars=len(text))
+        return True
+    except Exception as exc:
+        logger.warning("telegram_sync_error", error=str(exc))
+        return False

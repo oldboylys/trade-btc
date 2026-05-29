@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import asyncio
+import atexit
 import datetime
 import signal
 import sys
@@ -22,7 +23,7 @@ from src.core.logging import configure_logging, get_logger
 from src.core.mode import ModeGuard
 from src.core.models import Exchange, TradingMode
 from src.core.secrets import load_secrets
-from src.core.telegram import init_notifier
+from src.core.telegram import init_notifier, send_message_sync
 from src.risk.manager import RiskConfig, RiskManager
 from src.web.status_store import init_store
 from src.web.server import start_server
@@ -237,42 +238,86 @@ async def _run_paper_btc(config: dict) -> None:
             f"开仓/平仓将实时推送至此"
         )
 
-    # ── 每小时持仓状态推送 ────────────────────────────────
-    async def _hourly_status_task() -> None:
-        """每小时发送一次持仓状态到 Telegram."""
-        while True:
-            await asyncio.sleep(3600)
-            now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M UTC+8")
-            bal = paper_ex.balance
-            upnl = paper_ex.position_book.total_unrealized_pnl()
-            total_realized = paper_ex.position_book.daily_realized_pnl
-            all_pos = paper_ex.position_book.get_all_positions()
+    # ── 每小时持仓状态推送（启动后立即发一条，之后每小时） ─────
+    _hourly_interval = int(tg_cfg.get("hourly_interval_sec", 3600))
+    _disconnect_sent = False
 
-            if all_pos:
-                pos = all_pos[0]
-                pos_lines = (
-                    f"持仓方向：{pos.side.value}\n"
-                    f"持仓数量：{float(pos.qty):.4f} BTC\n"
-                    f"开仓均价：${float(pos.entry_price):,.2f}\n"
-                    f"当前标价：${float(pos.mark_price):,.2f}\n"
-                    f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
-                )
-            else:
-                pos_lines = "当前无持仓\n"
+    async def _send_hourly_status() -> None:
+        now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M UTC+8")
+        bal = paper_ex.balance
+        upnl = paper_ex.position_book.total_unrealized_pnl()
+        total_realized = paper_ex.position_book.daily_realized_pnl
+        all_pos = paper_ex.position_book.get_all_positions()
+        btc_price = store.mark_price
 
-            msg = (
-                f"📈 <b>【每小时状态】{symbol}</b>\n"
-                f"时间：{now}\n"
-                f"{'─'*24}\n"
-                f"{pos_lines}"
-                f"{'─'*24}\n"
-                f"可用余额：${float(bal):,.2f} USDT\n"
-                f"今日已实现 PnL：{'+' if total_realized >= 0 else ''}{float(total_realized):,.2f} USDT\n"
-                f"<i>模式：纸交易 PAPER</i>"
+        if all_pos:
+            pos = all_pos[0]
+            pos_lines = (
+                f"持仓方向：{pos.side.value}\n"
+                f"持仓数量：{float(pos.qty):.4f} BTC\n"
+                f"开仓均价：${float(pos.entry_price):,.2f}\n"
+                f"当前标价：${float(pos.mark_price):,.2f}\n"
+                f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
             )
-            if tg_enabled:
-                await notifier._send(msg)
-            logger.info("hourly_status_sent", balance=float(bal), upnl=float(upnl))
+        else:
+            pos_lines = "当前无持仓\n"
+
+        msg = (
+            f"📈 <b>【每小时状态】{symbol}</b>\n"
+            f"时间：{now}\n"
+            f"BTC 现价：${btc_price:,.2f}\n"
+            f"{'─'*24}\n"
+            f"{pos_lines}"
+            f"{'─'*24}\n"
+            f"可用余额：${float(bal):,.2f} USDT\n"
+            f"今日已实现 PnL：{'+' if total_realized >= 0 else ''}{float(total_realized):,.2f} USDT\n"
+            f"<i>模式：纸交易 PAPER</i>"
+        )
+        if tg_enabled:
+            await notifier._send(msg)
+        logger.info("hourly_status_sent", balance=float(bal), upnl=float(upnl), price=btc_price)
+
+    async def _hourly_status_task() -> None:
+        """启动后立即推送一次，之后按间隔定时推送."""
+        await _send_hourly_status()
+        while True:
+            await asyncio.sleep(_hourly_interval)
+            await _send_hourly_status()
+
+    def _build_disconnect_msg() -> str:
+        stop_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
+        bal = paper_ex.balance
+        upnl = paper_ex.position_book.total_unrealized_pnl()
+        realized = paper_ex.position_book.daily_realized_pnl
+        runtime = str(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8) - start_time).split(".")[0]
+        return (
+            f"🔴 <b>【断开连接】BTC 纸交易系统已停止</b>\n"
+            f"停止时间：{stop_time} UTC+8\n"
+            f"{'─'*24}\n"
+            f"BTC 现价：${store.mark_price:,.2f}\n"
+            f"可用余额：${float(bal):,.2f} USDT\n"
+            f"今日已实现 PnL：{'+' if realized >= 0 else ''}{float(realized):,.2f} USDT\n"
+            f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
+            f"运行时长：{runtime}"
+        )
+
+    async def _send_disconnect_notification() -> None:
+        nonlocal _disconnect_sent
+        if _disconnect_sent or not tg_enabled:
+            return
+        _disconnect_sent = True
+        await notifier._send(_build_disconnect_msg())
+        logger.info("disconnect_notification_sent")
+
+    # atexit 兜底：正常退出或部分信号场景下仍能发断开通知
+    def _atexit_disconnect() -> None:
+        nonlocal _disconnect_sent
+        if _disconnect_sent or not tg_enabled:
+            return
+        if send_message_sync(tg_token, tg_chat, _build_disconnect_msg()):
+            _disconnect_sent = True
+
+    atexit.register(_atexit_disconnect)
 
     # ── 启动 Web Dashboard 服务 ────────────────────────────
     web_host = web_cfg.get("host", "127.0.0.1")
@@ -315,28 +360,31 @@ async def _run_paper_btc(config: dict) -> None:
     hourly_task = asyncio.create_task(_hourly_status_task())
     price_poll_task = asyncio.create_task(_spot_kline_poll_task())
 
+    def _request_shutdown(signum: int | None = None) -> None:
+        logger.info("shutdown_signal_received", signal=signum)
+        bus.stop()
+
+    loop = asyncio.get_running_loop()
+    _shutdown_signals = [signal.SIGINT]
+    if hasattr(signal, "SIGTERM"):
+        _shutdown_signals.append(signal.SIGTERM)
+    if hasattr(signal, "SIGBREAK"):
+        _shutdown_signals.append(signal.SIGBREAK)
+    for sig in _shutdown_signals:
+        try:
+            loop.add_signal_handler(sig, _request_shutdown, sig)
+        except (NotImplementedError, RuntimeError):
+            # Windows 部分环境不支持 add_signal_handler，回退到 signal.signal
+            signal.signal(sig, lambda s, _f, _sig=sig: _request_shutdown(_sig))
+
     try:
-        await get_bus().run()
+        await bus.run()
     finally:
         for t in (hourly_task, price_poll_task):
             t.cancel()
         if web_runner is not None:
             await web_runner.cleanup()
-        # 断开通知
-        stop_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
-        if tg_enabled:
-            bal = paper_ex.balance
-            upnl = paper_ex.position_book.total_unrealized_pnl()
-            realized = paper_ex.position_book.daily_realized_pnl
-            await notifier._send(
-                f"🔴 <b>【断开连接】BTC 纸交易系统已停止</b>\n"
-                f"停止时间：{stop_time} UTC+8\n"
-                f"{'─'*24}\n"
-                f"可用余额：${float(bal):,.2f} USDT\n"
-                f"今日已实现 PnL：{'+' if realized >= 0 else ''}{float(realized):,.2f} USDT\n"
-                f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
-                f"运行时长：{str(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8) - start_time).split('.')[0]}"
-            )
+        await _send_disconnect_notification()
         await notifier.close()
 
 
@@ -408,13 +456,7 @@ def cli(mode: Optional[str], strategy: str, config_dir: Optional[str], log_level
         )
 
     loop = asyncio.new_event_loop()
-
-    def _shutdown(sig, frame):
-        logger.info("shutdown_signal_received")
-        loop.stop()
-
-    signal.signal(signal.SIGINT, _shutdown)
-    signal.signal(signal.SIGTERM, _shutdown)
+    asyncio.set_event_loop(loop)
 
     if strategy == "btc":
         coro = _run_paper_btc(cfg) if running_mode == TradingMode.PAPER else _run_paper_btc(cfg)
