@@ -111,6 +111,8 @@ async def _run_paper_btc(config: dict) -> None:
     bus = get_bus()
 
     async def on_kline_closed(kline) -> None:
+        logger.info("kline_closed_received", interval=kline.interval,
+                    close=float(kline.close), open_time=kline.open_time)
         paper_ex.feed_kline(kline)
 
         # 更新状态存储：行情价格
@@ -182,6 +184,44 @@ async def _run_paper_btc(config: dict) -> None:
     symbol = strat_cfg.get("symbol", "BTCUSDT")
     await feed.subscribe("binance", symbol, "1m", on_tick=on_tick_sync)
 
+    # ── 获取聚合器引用（feed.subscribe 已创建） ────────────────
+    from src.core.models import Exchange as _Exchange
+    _agg = feed._get_aggregator(symbol, _Exchange.BINANCE)
+
+    # ── 现货K线去重状态（WS 和 REST 共享，避免重复发布同一根K线） ──
+    _spot_state: dict = {"last_ts": 0, "ws_alive": False}
+
+    # ── 策略指标预热：通过 WS API / REST 批量拉取历史K线 ─────────
+    # 1m=5h / 5m=41h / 1h=6天 历史数据
+    logger.info("pipeline_warmup_starting")
+    _warmup_total = 0
+    for _wm_iv, _wm_limit in [("1h", 150), ("5m", 500), ("1m", 350)]:
+        try:
+            _wm_klines = await asyncio.wait_for(
+                binance.get_spot_klines(symbol, _wm_iv, limit=_wm_limit),
+                timeout=30,
+            )
+            # 跳过最后一根（当前未闭合K线），避免脏数据进入指标缓冲
+            for _kl in _wm_klines[:-1]:
+                strategy._pipeline.feed(_kl)
+                _warmup_total += 1
+            logger.info("pipeline_warmup_ok", interval=_wm_iv, bars=len(_wm_klines) - 1)
+        except Exception as _exc:
+            logger.warning("pipeline_warmup_failed", interval=_wm_iv, error=str(_exc))
+    logger.info("pipeline_warmup_done", total=_warmup_total)
+
+    # ── 现货K线 WebSocket（绕过被代理拦截的期货kline流） ──────────
+    def _spot_kline_ws_cb(kline) -> None:
+        """现货1m kline回调：实时更新价格 + 经聚合器生成5m/1h K线事件."""
+        on_tick_sync(kline)
+        if kline.is_closed and kline.open_time > _spot_state["last_ts"]:
+            _spot_state["last_ts"] = kline.open_time
+            _spot_state["ws_alive"] = True
+            # 通过聚合器：自动触发 EVT_KLINE_CLOSED（含5m/1h聚合结果）
+            _agg.feed(kline)
+
+    await binance.subscribe_spot_klines(symbol, "1m", callback=_spot_kline_ws_cb)
+
     logger.info("paper_btc_running", symbol=symbol, mode="paper")
 
     # ── 系统启动通知 ──────────────────────────────────────
@@ -191,7 +231,8 @@ async def _run_paper_btc(config: dict) -> None:
             f"✅ <b>【连接成功】BTC 纸交易系统已启动</b>\n"
             f"品种：{symbol}\n"
             f"策略：BTC 多指标 v1\n"
-            f"行情来源：Binance fapi 实时 1m K线\n"
+            f"行情来源：现货 stream.binance.com（1m/5m/1h）\n"
+            f"指标预热：{_warmup_total} 根历史K线已载入\n"
             f"启动时间：{start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC+8\n"
             f"开仓/平仓将实时推送至此"
         )
@@ -243,47 +284,36 @@ async def _run_paper_btc(config: dict) -> None:
         logger.error("dashboard_server_failed", error=str(exc), exc_info=True)
         web_runner = None
 
-    # ── 启动时同步拉取一次价格，确认 REST 可达 ────────────────
-    try:
-        mp = await binance.get_mark_price(symbol)
-        store.mark_price = float(mp.mark_price)
-        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-        logger.info("mark_price_init", price=float(mp.mark_price))
-    except Exception as exc:
-        logger.warning("mark_price_init_failed", error=str(exc))
-
-    # ── REST 轮询兜底：WebSocket kline 不通时通过 REST 驱动策略 ──
-    _last_kline_open_time: int = 0
-
-    async def _rest_kline_poll_task() -> None:
-        nonlocal _last_kline_open_time
+    # ── 现货REST轮询兜底：现货WS不通时通过REST驱动策略（每20秒） ──
+    async def _spot_kline_poll_task() -> None:
+        """现货K线REST轮询，WS活跃时仅更新价格，WS断开时兜底驱动策略."""
         while True:
-            await asyncio.sleep(10)
+            await asyncio.sleep(20)
             try:
-                # 取最新两根已闭合的 1m K线
-                klines = await binance.get_klines(symbol, "1m", limit=2)
+                klines = await binance.get_spot_klines(symbol, "1m", limit=3)
                 if not klines:
                     continue
-                # 取倒数第二根（最新已闭合）
-                closed_kline = klines[-2] if len(klines) >= 2 else klines[-1]
-                # 价格用最新一根的收盘价（含当前未闭合）
-                latest = klines[-1]
-                store.mark_price = float(latest.close)
+                # 始终用最新K线的收盘价更新看板价格
+                store.mark_price = float(klines[-1].close)
                 store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
 
-                # 只有新闭合的 K 线才触发策略
-                if closed_kline.open_time != _last_kline_open_time and closed_kline.is_closed:
-                    _last_kline_open_time = closed_kline.open_time
-                    logger.info("rest_kline_closed", symbol=symbol, close=float(closed_kline.close),
-                                open_time=closed_kline.open_time)
-                    bus = get_bus()
-                    await bus.publish("kline_closed", closed_kline)
+                if _spot_state.get("ws_alive"):
+                    # WS 正常工作，REST 只负责价格兜底，不重复推送K线
+                    continue
+
+                # WS 不工作：用REST兜底驱动策略
+                closed = klines[-2] if len(klines) >= 2 else None
+                if closed and closed.is_closed and closed.open_time > _spot_state["last_ts"]:
+                    _spot_state["last_ts"] = closed.open_time
+                    logger.info("spot_rest_kline_closed", close=float(closed.close),
+                                open_time=closed.open_time)
+                    _agg.feed(closed)  # 聚合生成5m/1h → 自动触发 EVT_KLINE_CLOSED
             except Exception as exc:
-                logger.warning("rest_kline_poll_error", error=str(exc))
+                logger.warning("spot_kline_poll_error", error=str(exc))
 
     # ── 启动后台任务并运行主循环 ──────────────────────────
     hourly_task = asyncio.create_task(_hourly_status_task())
-    price_poll_task = asyncio.create_task(_rest_kline_poll_task())
+    price_poll_task = asyncio.create_task(_spot_kline_poll_task())
 
     try:
         await get_bus().run()

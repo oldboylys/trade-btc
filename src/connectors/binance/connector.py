@@ -32,6 +32,10 @@ WS_BASE = "wss://fstream.binance.com"
 REST_BASE_TESTNET = "https://testnet.binancefuture.com"
 WS_BASE_TESTNET = "wss://stream.binancefuture.com"
 
+# 现货接口（用于代理环境下期货接口不通时的备用数据源）
+SPOT_REST_BASE = "https://api.binance.com"
+SPOT_WS_BASE = "wss://stream.binance.com:9443"
+
 
 def _side(side: OrderSide) -> str:
     return "BUY" if side == OrderSide.BUY else "SELL"
@@ -320,24 +324,7 @@ class BinanceConnector(IExchange):
         if end_ms:
             params["endTime"] = end_ms
         data = await self._get("/fapi/v1/klines", params)
-        return [
-            Kline(
-                symbol=symbol,
-                exchange=Exchange.BINANCE,
-                interval=interval,
-                open_time=int(d[0]),
-                close_time=int(d[6]),
-                open=Decimal(d[1]),
-                high=Decimal(d[2]),
-                low=Decimal(d[3]),
-                close=Decimal(d[4]),
-                volume=Decimal(d[5]),
-                quote_volume=Decimal(d[7]),
-                num_trades=int(d[8]),
-                is_closed=True,
-            )
-            for d in data
-        ]
+        return self._parse_klines(symbol, interval, data)
 
     async def get_orderbook(self, symbol: str, depth: int = 20) -> OrderBook:
         data = await self._get("/fapi/v1/depth", {"symbol": symbol, "limit": depth})
@@ -460,6 +447,104 @@ class BinanceConnector(IExchange):
     async def subscribe_positions(self, callback: Callable[[Position], None]) -> None:
         self._position_callbacks.append(callback)
         await self._ensure_user_stream()
+
+    async def get_spot_klines(
+        self, symbol: str, interval: str, limit: int = 500,
+    ) -> list[Kline]:
+        """获取现货K线——优先通过 WebSocket API（绕过 HTTPS 封锁），降级到 REST."""
+        # 首先尝试通过 WebSocket API 获取（同一条 WSS 链路，代理通常不阻断）
+        try:
+            return await self._get_klines_via_ws_api(symbol, interval, limit)
+        except Exception as exc:
+            logger.debug("ws_api_klines_failed", error=str(exc), interval=interval)
+
+        # 降级：尝试多个 REST 集群
+        import ssl as _ssl
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = _ssl.CERT_NONE
+        params: dict = {"symbol": symbol, "interval": interval, "limit": str(limit)}
+        rest_clusters = [
+            SPOT_REST_BASE,
+            "https://api1.binance.com",
+            "https://api2.binance.com",
+            "https://api3.binance.com",
+            "https://api4.binance.com",
+        ]
+        last_exc: Exception = RuntimeError("no clusters tried")
+        for base in rest_clusters:
+            try:
+                async with aiohttp.ClientSession(
+                    connector=aiohttp.TCPConnector(ssl=_ctx),
+                    timeout=aiohttp.ClientTimeout(total=10),
+                ) as sess:
+                    async with sess.get(f"{base}/api/v3/klines", params=params) as resp:
+                        data = await resp.json()
+                return self._parse_klines(symbol, interval, data)
+            except Exception as exc2:
+                last_exc = exc2
+                logger.debug("rest_klines_cluster_failed", cluster=base, error=str(exc2))
+        raise last_exc
+
+    async def _get_klines_via_ws_api(
+        self, symbol: str, interval: str, limit: int,
+    ) -> list[Kline]:
+        """通过 Binance WebSocket API 获取历史K线（绕过 HTTPS 代理封锁）."""
+        import ssl as _ssl
+        import websockets  # type: ignore
+        import uuid as _uuid
+
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = _ssl.CERT_NONE
+
+        req_id = str(_uuid.uuid4())[:8]
+        payload = {
+            "id": req_id,
+            "method": "klines",
+            "params": {"symbol": symbol, "interval": interval, "limit": limit},
+        }
+        url = "wss://ws-api.binance.com:443/ws-api/v3"
+        async with websockets.connect(url, ssl=_ctx, open_timeout=15) as ws:
+            await ws.send(json.dumps(payload))
+            raw = await asyncio.wait_for(ws.recv(), timeout=15)
+        resp = json.loads(raw)
+        if resp.get("status") != 200:
+            raise RuntimeError(f"ws_api error: {resp.get('error')}")
+        return self._parse_klines(symbol, interval, resp["result"])
+
+    def _parse_klines(self, symbol: str, interval: str, data: list) -> list[Kline]:
+        """将 Binance K线原始列表解析为 Kline 对象."""
+        return [
+            Kline(
+                symbol=symbol,
+                exchange=Exchange.BINANCE,
+                interval=interval,
+                open_time=int(d[0]),
+                close_time=int(d[6]),
+                open=Decimal(d[1]),
+                high=Decimal(d[2]),
+                low=Decimal(d[3]),
+                close=Decimal(d[4]),
+                volume=Decimal(d[5]),
+                quote_volume=Decimal(d[7]),
+                num_trades=int(d[8]),
+                is_closed=True,
+            )
+            for d in data
+        ]
+
+    async def subscribe_spot_klines(
+        self, symbol: str, interval: str,
+        callback: Callable[[Kline], None],
+    ) -> None:
+        """订阅现货K线WebSocket流（stream.binance.com）——期货流被代理拦截时的备用."""
+        stream = f"{symbol.lower()}@kline_{interval}"
+        url = f"{SPOT_WS_BASE}/ws/{stream}"
+        task = asyncio.create_task(
+            self._ws_stream(url, self._kline_handler(symbol, interval, callback, combined=False))
+        )
+        self._ws_tasks.append(task)
 
     async def subscribe_funding_rate(self, symbol: str, callback: Callable) -> None:
         stream = f"{symbol.lower()}@markPrice@1s"

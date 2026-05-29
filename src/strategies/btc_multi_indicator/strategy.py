@@ -69,9 +69,14 @@ class BTCMultiIndicatorStrategy(IStrategy):
         trend = self._pipeline.get_features(self.trend_tf)
 
         if not primary or not trend:
+            logger.info("strategy_no_features", interval=kline.interval,
+                        has_primary=bool(primary), has_trend=bool(trend))
             return None
 
         long_score, short_score = self._score(primary, trend)
+        logger.info("strategy_scores", interval=kline.interval,
+                    long=round(long_score, 3), short=round(short_score, 3),
+                    threshold=self.signal_threshold, close=float(kline.close))
         close = Decimal(str(primary.get("close", 0)))
         if close <= 0:
             return None
