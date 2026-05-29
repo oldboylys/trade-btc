@@ -149,9 +149,38 @@ async def _run_paper_btc(config: dict) -> None:
 
     bus.subscribe(EVT_KLINE_CLOSED, on_kline_closed)
 
+    # bookTicker 实时更新 mark price（kline WS 被代理拦截时的兜底）
+    from src.marketdata.feed import EVT_ORDERBOOK
+    _ob_count = 0
+
+    async def on_orderbook(ob) -> None:
+        nonlocal _ob_count
+        _ob_count += 1
+        if ob.bids and ob.asks:
+            mid = (float(ob.bids[0][0]) + float(ob.asks[0][0])) / 2
+            store.mark_price = round(mid, 2)
+            store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+            if _ob_count == 1:
+                logger.info("orderbook_price_first", price=store.mark_price)
+
+    bus.subscribe(EVT_ORDERBOOK, on_orderbook)
+
+    # 每次 tick 同步直接更新价格（绕过 bus，确保实时显示）
+    _tick_count = 0
+
+    def on_tick_sync(kline) -> None:
+        nonlocal _tick_count
+        _tick_count += 1
+        store.mark_price = float(kline.close)
+        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+        if _tick_count == 1:
+            logger.info("kline_tick_first", symbol=kline.symbol, price=float(kline.close))
+        elif _tick_count % 120 == 0:
+            logger.info("kline_tick_heartbeat", count=_tick_count, price=float(kline.close))
+
     await feed.start()
     symbol = strat_cfg.get("symbol", "BTCUSDT")
-    await feed.subscribe("binance", symbol, "1m")
+    await feed.subscribe("binance", symbol, "1m", on_tick=on_tick_sync)
 
     logger.info("paper_btc_running", symbol=symbol, mode="paper")
 
@@ -207,16 +236,62 @@ async def _run_paper_btc(config: dict) -> None:
     # ── 启动 Web Dashboard 服务 ────────────────────────────
     web_host = web_cfg.get("host", "127.0.0.1")
     web_port = int(web_cfg.get("port", 8080))
-    web_runner = await start_server(host=web_host, port=web_port)
+    logger.info("dashboard_server_starting", host=web_host, port=web_port)
+    try:
+        web_runner = await start_server(host=web_host, port=web_port)
+    except Exception as exc:
+        logger.error("dashboard_server_failed", error=str(exc), exc_info=True)
+        web_runner = None
+
+    # ── 启动时同步拉取一次价格，确认 REST 可达 ────────────────
+    try:
+        mp = await binance.get_mark_price(symbol)
+        store.mark_price = float(mp.mark_price)
+        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+        logger.info("mark_price_init", price=float(mp.mark_price))
+    except Exception as exc:
+        logger.warning("mark_price_init_failed", error=str(exc))
+
+    # ── REST 轮询兜底：WebSocket kline 不通时通过 REST 驱动策略 ──
+    _last_kline_open_time: int = 0
+
+    async def _rest_kline_poll_task() -> None:
+        nonlocal _last_kline_open_time
+        while True:
+            await asyncio.sleep(10)
+            try:
+                # 取最新两根已闭合的 1m K线
+                klines = await binance.get_klines(symbol, "1m", limit=2)
+                if not klines:
+                    continue
+                # 取倒数第二根（最新已闭合）
+                closed_kline = klines[-2] if len(klines) >= 2 else klines[-1]
+                # 价格用最新一根的收盘价（含当前未闭合）
+                latest = klines[-1]
+                store.mark_price = float(latest.close)
+                store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+
+                # 只有新闭合的 K 线才触发策略
+                if closed_kline.open_time != _last_kline_open_time and closed_kline.is_closed:
+                    _last_kline_open_time = closed_kline.open_time
+                    logger.info("rest_kline_closed", symbol=symbol, close=float(closed_kline.close),
+                                open_time=closed_kline.open_time)
+                    bus = get_bus()
+                    await bus.publish("kline_closed", closed_kline)
+            except Exception as exc:
+                logger.warning("rest_kline_poll_error", error=str(exc))
 
     # ── 启动后台任务并运行主循环 ──────────────────────────
-    hourly_task = asyncio.ensure_future(_hourly_status_task())
+    hourly_task = asyncio.create_task(_hourly_status_task())
+    price_poll_task = asyncio.create_task(_rest_kline_poll_task())
 
     try:
         await get_bus().run()
     finally:
-        hourly_task.cancel()
-        await web_runner.cleanup()
+        for t in (hourly_task, price_poll_task):
+            t.cancel()
+        if web_runner is not None:
+            await web_runner.cleanup()
         # 断开通知
         stop_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
         if tg_enabled:

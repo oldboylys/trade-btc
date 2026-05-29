@@ -81,8 +81,14 @@ class BinanceConnector(IExchange):
         self._position_callbacks: list[Callable[[Position], None]] = []
 
     async def connect(self) -> None:
+        import ssl as _ssl
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = _ssl.CERT_NONE
         self._session = aiohttp.ClientSession(
-            headers={"X-MBX-APIKEY": self.api_key}
+            headers={"X-MBX-APIKEY": self.api_key},
+            connector=aiohttp.TCPConnector(ssl=_ctx),
+            timeout=aiohttp.ClientTimeout(total=15),
         )
         self._connected = True
         logger.info("binance_connected", testnet=(self._rest_base != REST_BASE))
@@ -372,14 +378,20 @@ class BinanceConnector(IExchange):
         callback: Callable[[Kline], None],
     ) -> None:
         stream = f"{symbol.lower()}@kline_{interval}"
+        # 优先使用合并流路径（/stream?streams=），部分代理环境下比单流路径更可达
+        url = f"{self._ws_base}/stream?streams={stream}"
         task = asyncio.create_task(
-            self._ws_stream(f"{self._ws_base}/ws/{stream}", self._kline_handler(symbol, interval, callback))
+            self._ws_stream(url, self._kline_handler(symbol, interval, callback, combined=True))
         )
         self._ws_tasks.append(task)
 
-    def _kline_handler(self, symbol: str, interval: str, callback):
+    def _kline_handler(self, symbol: str, interval: str, callback, combined: bool = False):
         def handler(msg: dict) -> None:
-            k = msg.get("k", {})
+            # 合并流消息格式：{"stream": "btcusdt@kline_1m", "data": {...}}
+            data = msg.get("data", msg) if combined else msg
+            k = data.get("k", {})
+            if not k:
+                return
             kline = Kline(
                 symbol=symbol,
                 exchange=Exchange.BINANCE,
@@ -532,12 +544,22 @@ class BinanceConnector(IExchange):
     async def _ws_stream(
         self, url: str, handler: Callable, reconnect_delay: float = 5.0
     ) -> None:
+        import ssl as _ssl
         import websockets  # type: ignore
+        # 代理环境跳过 SSL 校验（与 Telegram 通知一致）
+        _ctx = _ssl.create_default_context()
+        _ctx.check_hostname = False
+        _ctx.verify_mode = _ssl.CERT_NONE
+        _msg_count = 0
         while self._connected:
             try:
-                async with websockets.connect(url, ping_interval=20) as ws:
-                    logger.debug("ws_connected", url=url)
+                logger.info("ws_connecting", url=url)
+                async with websockets.connect(url, ping_interval=20, ssl=_ctx) as ws:
+                    logger.info("ws_connected", url=url)
                     async for raw in ws:
+                        _msg_count += 1
+                        if _msg_count == 1:
+                            logger.info("ws_first_message", url=url)
                         try:
                             msg = json.loads(raw)
                             handler(msg)

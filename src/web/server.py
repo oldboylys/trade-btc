@@ -20,10 +20,16 @@ async def _handle_status(request: web.Request) -> web.Response:
     if store is None:
         return web.json_response({"error": "not initialized"}, status=503)
     data = store.to_dict()
+    # file:// 打开时 Origin 为 "null"，必须显式回传才能通过 CORS
+    origin = request.headers.get("Origin", "*")
     return web.Response(
         text=json.dumps(data, ensure_ascii=False),
         content_type="application/json",
-        headers={"Access-Control-Allow-Origin": "*"},
+        headers={
+            "Access-Control-Allow-Origin": origin,
+            "Access-Control-Allow-Methods": "GET",
+            "Vary": "Origin",
+        },
     )
 
 

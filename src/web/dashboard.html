@@ -288,6 +288,7 @@
 </div><!-- app -->
 
 <script>
+const API_BASE = location.protocol === 'file:' ? 'http://127.0.0.1:8080' : '';
 const { createApp, ref, computed, onMounted, onUnmounted } = Vue;
 
 createApp({
@@ -322,7 +323,7 @@ createApp({
 
     const fetchStatus = async () => {
       try {
-        const res = await fetch('/api/status');
+        const res = await fetch(`${API_BASE}/api/status`);
         if (!res.ok) throw new Error('HTTP ' + res.status);
         data.value = await res.json();
         connected.value = true;

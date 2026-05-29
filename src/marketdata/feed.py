@@ -54,7 +54,8 @@ class MarketDataFeed:
         asyncio.ensure_future(self.storage.save_kline(kline))
 
     async def subscribe(
-        self, exchange_name: str, symbol: str, interval: str = "1m"
+        self, exchange_name: str, symbol: str, interval: str = "1m",
+        on_tick: Callable[[Kline], None] | None = None,
     ) -> None:
         ex = self._exchanges.get(exchange_name)
         if ex is None:
@@ -73,8 +74,19 @@ class MarketDataFeed:
             bus = get_bus()
             await bus.publish(EVT_ORDERBOOK, ob)
 
-        await ex.subscribe_klines(symbol, interval, callback=lambda k: asyncio.ensure_future(on_kline(k)))
-        await ex.subscribe_orderbook(symbol, callback=lambda ob: asyncio.ensure_future(on_orderbook(ob)))
+        def kline_callback(k: Kline) -> None:
+            # 同步直接回调（价格更新等不依赖 bus 调度）
+            if on_tick is not None:
+                try:
+                    on_tick(k)
+                except Exception as exc:
+                    logger.warning("on_tick_error", error=str(exc))
+            # 异步走策略/bus 通路
+            loop = asyncio.get_event_loop()
+            loop.create_task(on_kline(k))
+
+        await ex.subscribe_klines(symbol, interval, callback=kline_callback)
+        await ex.subscribe_orderbook(symbol, callback=lambda ob: asyncio.get_event_loop().create_task(on_orderbook(ob)))
         logger.info("subscribed", exchange=exchange_name, symbol=symbol, interval=interval)
 
     async def start(self) -> None:
