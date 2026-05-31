@@ -154,6 +154,10 @@ class RiskManager:
             if not order.reduce_only:
                 return RiskCheckResult(action=RiskAction.BLOCK, reason="disconnect_reduce_only")
 
+        # 减仓/平仓单（TP/SL）不受单笔名义上限约束
+        if order.reduce_only:
+            return RiskCheckResult(action=RiskAction.ALLOW)
+
         # 单笔名义价值检查
         price = order.price or mark_price
         notional = price * order.qty

@@ -90,13 +90,26 @@ class PaperMatchingEngine:
             if order.symbol != symbol:
                 continue
 
-            if order.order_type in (OrderType.STOP_MARKET, OrderType.TAKE_PROFIT_MARKET):
+            if order.order_type == OrderType.TAKE_PROFIT_MARKET:
                 if order.stop_price is None or mark is None:
                     continue
-                triggered = (
-                    (order.side == OrderSide.BUY and mark >= order.stop_price)
-                    or (order.side == OrderSide.SELL and mark <= order.stop_price)
-                )
+                # 止盈：平多=价格涨到 TP；平空=价格跌到 TP
+                if order.side == OrderSide.SELL:
+                    triggered = mark >= order.stop_price
+                else:
+                    triggered = mark <= order.stop_price
+                if triggered:
+                    fill_price = self.slippage_model.apply(mark, order.side, order.qty)
+                    to_fill.append((order, fill_price))
+
+            elif order.order_type == OrderType.STOP_MARKET:
+                if order.stop_price is None or mark is None:
+                    continue
+                # 止损：平多=价格跌到 SL；平空=价格涨到 SL
+                if order.side == OrderSide.SELL:
+                    triggered = mark <= order.stop_price
+                else:
+                    triggered = mark >= order.stop_price
                 if triggered:
                     fill_price = self.slippage_model.apply(mark, order.side, order.qty)
                     to_fill.append((order, fill_price))

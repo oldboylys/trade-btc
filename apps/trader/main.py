@@ -126,6 +126,7 @@ async def _run_paper_btc(config: dict) -> None:
 
         # 更新持仓状态
         pos_entry = paper_ex.position_book.get_position(kline.symbol)
+        current_side = pos_entry.side if pos_entry and pos_entry.qty > 0 else None
         if pos_entry and pos_entry.qty > 0:
             store.has_position = True
             store.pos_side = pos_entry.side.value
@@ -136,11 +137,21 @@ async def _run_paper_btc(config: dict) -> None:
         else:
             store.has_position = False
 
-        target = strategy.on_kline(kline)
+        target = strategy.on_kline(kline, position_side=current_side)
         if target is not None:
+            if target.tp_price and target.sl_price:
+                paper_ex.position_book.set_tp_sl(
+                    kline.symbol,
+                    float(target.tp_price),
+                    float(target.sl_price or 0),
+                )
             await router.execute(target)
+            store.balance = float(paper_ex.balance)
+            store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
+            store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
+            store.total_fee = float(paper_ex.position_book.total_fee)
             pos_entry = paper_ex.position_book.get_position(kline.symbol)
-            if pos_entry:
+            if pos_entry and pos_entry.qty > 0:
                 logger.info(
                     "position_snapshot",
                     symbol=kline.symbol,
@@ -163,6 +174,13 @@ async def _run_paper_btc(config: dict) -> None:
             mid = (float(ob.bids[0][0]) + float(ob.asks[0][0])) / 2
             store.mark_price = round(mid, 2)
             store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
+            paper_ex.position_book.update_mark_price(ob.symbol, Decimal(str(mid)))
+            if store.has_position:
+                pos = paper_ex.position_book.get_position(ob.symbol)
+                if pos:
+                    store.pos_mark_price = round(mid, 2)
+                    store.pos_upnl = float(pos.unrealized_pnl)
+                    store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
             if _ob_count == 1:
                 logger.info("orderbook_price_first", price=store.mark_price)
 

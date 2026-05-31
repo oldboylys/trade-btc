@@ -7,7 +7,7 @@ from typing import Optional
 from src.core.clock import get_clock
 from src.core.logging import get_logger
 from src.core.models import (
-    Exchange, Kline, SignalDirection, TargetPosition,
+    Exchange, Kline, PositionSide, SignalDirection, TargetPosition,
 )
 from src.indicators.pipeline import IndicatorPipeline
 from src.strategies.base import IStrategy
@@ -28,6 +28,11 @@ class BTCMultiIndicatorStrategy(IStrategy):
         - 成交量放大（vol_ratio > 1.2）               权重 0.15
       空头：镜像反转
       趋势过滤：1h EMA20/EMA50 方向一致
+
+    持仓决策：
+      开仓 → 5m 得分 >= threshold
+      持有 → 得分回落不平仓，等待 TP/SL 或趋势反转
+      平仓 → 仅两种路径：①价格触及 TP/SL  ②反向得分 >= threshold（反手）
 
     输出：TargetPosition 含 tp_price / sl_price。
     """
@@ -60,8 +65,24 @@ class BTCMultiIndicatorStrategy(IStrategy):
         )
         self._last_signal: SignalDirection = SignalDirection.FLAT
 
-    def on_kline(self, kline: Kline) -> TargetPosition | None:
+    def on_kline(
+        self,
+        kline: Kline,
+        position_side: PositionSide | None = None,
+    ) -> TargetPosition | None:
+        """
+        持仓决策逻辑：
+          无仓 → 得分达阈值才开仓
+          有仓 → 持有直到 TP/SL 触发，或反向信号（趋势反转）才平仓/反手
+          得分回落到阈值以下 → 不平仓，继续持仓
+        """
         if kline.symbol != self.symbol:
+            return None
+
+        # 非主周期 K 线只更新指标缓冲，不触发交易信号
+        if kline.interval != self.primary_tf:
+            if kline.interval in self._pipeline.intervals:
+                self._pipeline.feed(kline)
             return None
 
         self._pipeline.feed(kline)
@@ -76,23 +97,45 @@ class BTCMultiIndicatorStrategy(IStrategy):
         long_score, short_score = self._score(primary, trend)
         logger.info("strategy_scores", interval=kline.interval,
                     long=round(long_score, 3), short=round(short_score, 3),
-                    threshold=self.signal_threshold, close=float(kline.close))
+                    threshold=self.signal_threshold, close=float(kline.close),
+                    position=position_side.value if position_side else "flat")
         close = Decimal(str(primary.get("close", 0)))
         if close <= 0:
             return None
 
+        want_long = long_score >= self.signal_threshold
+        want_short = short_score >= self.signal_threshold
+
         direction = SignalDirection.FLAT
         confidence = 0.0
 
-        if long_score >= self.signal_threshold:
-            direction = SignalDirection.LONG
-            confidence = long_score
-        elif short_score >= self.signal_threshold:
-            direction = SignalDirection.SHORT
-            confidence = short_score
-
-        if direction == SignalDirection.FLAT and self._last_signal == SignalDirection.FLAT:
-            return None
+        if position_side == PositionSide.LONG:
+            if want_short:
+                direction = SignalDirection.SHORT
+                confidence = short_score
+                logger.info("strategy_reversal", from_side="long", to_side="short")
+            else:
+                logger.info("strategy_hold", side="long",
+                            long=round(long_score, 3), short=round(short_score, 3))
+                return None
+        elif position_side == PositionSide.SHORT:
+            if want_long:
+                direction = SignalDirection.LONG
+                confidence = long_score
+                logger.info("strategy_reversal", from_side="short", to_side="long")
+            else:
+                logger.info("strategy_hold", side="short",
+                            long=round(long_score, 3), short=round(short_score, 3))
+                return None
+        else:
+            if want_long:
+                direction = SignalDirection.LONG
+                confidence = long_score
+            elif want_short:
+                direction = SignalDirection.SHORT
+                confidence = short_score
+            else:
+                return None
 
         target_qty = Decimal("0")
         tp_price: Optional[Decimal] = None

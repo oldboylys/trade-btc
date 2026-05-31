@@ -120,7 +120,22 @@ class ExecutionRouter:
 
         delta = target_qty - current_qty
         if delta <= Decimal("0.001"):
-            return  # 无需操作
+            logger.debug("reconcile_noop", symbol=symbol,
+                         current=float(current_qty), target=float(target_qty))
+            return  # 已达目标仓位，无需操作
+
+        # 单笔名义价值上限（风控）
+        max_order_qty = (
+            self.risk.config.max_single_order_usdt / mark_price
+        ).quantize(Decimal("0.001"))
+        if delta > max_order_qty:
+            logger.info(
+                "order_qty_capped",
+                symbol=symbol,
+                requested=float(delta),
+                capped=float(max_order_qty),
+            )
+            delta = max_order_qty
 
         order_side = OrderSide.BUY if target_direction == SignalDirection.LONG else OrderSide.SELL
         direction_label = "多头 LONG" if target_direction == SignalDirection.LONG else "空头 SHORT"
@@ -137,19 +152,7 @@ class ExecutionRouter:
             + f"{'='*60}\n"
         )
 
-        # Telegram 开仓通知
-        if self.notifier:
-            self.notifier.notify_open(
-                symbol=symbol,
-                direction=direction_label,
-                qty=float(delta),
-                price=float(mark_price),
-                notional=notional,
-                tp_price=float(tp_price) if tp_price else None,
-                sl_price=float(sl_price) if sl_price else None,
-            )
-
-        await self._place_order_with_retry(
+        filled = await self._place_order_with_retry(
             Order(
                 client_order_id=str(uuid.uuid4()),
                 exchange=self.exchange.__class__.__name__.lower().replace("connector", ""),
@@ -161,9 +164,14 @@ class ExecutionRouter:
             mark_price=mark_price,
         )
 
-        # 挂止盈止损条件单
+        if not filled:
+            return
+
+        # 挂止盈止损条件单（按实际成交后的总仓位）
+        actual_pos = await self.exchange.get_position(symbol)
+        actual_qty = actual_pos.qty if actual_pos else delta
         if tp_price or sl_price:
-            await self._place_tp_sl(symbol, target_direction, target_qty, tp_price, sl_price)
+            await self._place_tp_sl(symbol, target_direction, actual_qty, tp_price, sl_price)
 
     async def _close_position(
         self,
@@ -258,18 +266,18 @@ class ExecutionRouter:
             except Exception:
                 pass
 
-    async def _place_order_with_retry(self, order: Order, mark_price: Decimal) -> None:
+    async def _place_order_with_retry(self, order: Order, mark_price: Decimal) -> bool:
         check = self.risk.check_order(order, mark_price)
         if check.action != RiskAction.ALLOW:
             logger.warning("order_blocked", symbol=order.symbol, reason=check.reason)
-            return
+            return False
 
         if self.mode_guard.is_paper:
             pass  # PaperExchange 可以直接下单
 
-        await self._place_raw(order)
+        return await self._place_raw(order)
 
-    async def _place_raw(self, order: Order) -> None:
+    async def _place_raw(self, order: Order) -> bool:
         for attempt in range(self.max_retry):
             try:
                 result = await self.exchange.place_order(order)
@@ -280,9 +288,10 @@ class ExecutionRouter:
                     qty=float(order.qty),
                     status=result.status.value,
                 )
-                return
+                return True
             except Exception as exc:
                 logger.warning("order_retry", attempt=attempt, error=str(exc))
                 if attempt < self.max_retry - 1:
                     await asyncio.sleep(1.0 * (attempt + 1))
         logger.error("order_failed_all_retries", symbol=order.symbol)
+        return False

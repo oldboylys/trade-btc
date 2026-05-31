@@ -10,7 +10,11 @@ class IStrategy(abc.ABC):
     name: str = "base"
 
     @abc.abstractmethod
-    def on_kline(self, kline: Kline) -> TargetPosition | None:
+    def on_kline(
+        self,
+        kline: Kline,
+        position_side: "PositionSide | None" = None,
+    ) -> TargetPosition | None:
         """接收闭合K线，返回目标仓位（None=不操作）."""
 
     def on_start(self) -> None:

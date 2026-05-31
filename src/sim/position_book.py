@@ -68,12 +68,37 @@ class PositionBook:
         self._notifier: Optional["_TelegramNotifier"] = None
         self._store: Optional[object] = None
         self._open_time: dict[str, str] = {}  # symbol -> open_time str
+        self._tp_sl: dict[str, tuple[float, float]] = {}  # symbol -> (tp, sl)
 
     def set_notifier(self, notifier: "_TelegramNotifier") -> None:
         self._notifier = notifier
 
     def set_store(self, store: object) -> None:
         self._store = store
+
+    def set_tp_sl(self, symbol: str, tp: float, sl: float) -> None:
+        self._tp_sl[symbol] = (tp, sl)
+
+    def _sync_store(self, symbol: str) -> None:
+        """成交后同步 Web 看板持仓状态."""
+        if self._store is None:
+            return
+        pos = self._positions.get(symbol)
+        if pos and pos.qty > 0:
+            tp, sl = self._tp_sl.get(symbol, (0.0, 0.0))
+            self._store.has_position = True
+            self._store.pos_side = pos.side.value
+            self._store.pos_qty = float(pos.qty)
+            self._store.pos_entry_price = float(pos.entry_price)
+            self._store.pos_mark_price = float(pos.mark_price)
+            self._store.pos_upnl = float(pos.unrealized_pnl)
+            self._store.pos_tp = tp
+            self._store.pos_sl = sl
+        else:
+            self._store.has_position = False
+            self._store.pos_qty = 0.0
+            self._store.pos_upnl = 0.0
+            self._tp_sl.pop(symbol, None)
 
     def on_fill(self, fill: Fill) -> None:
         key = fill.symbol
@@ -107,6 +132,20 @@ class PositionBook:
                 entry_price=float(pos.entry_price),
                 notional=round(float(pos.qty * pos.entry_price), 2),
             )
+            # Telegram 开仓通知（仅在真实成交时发送）
+            if self._notifier:
+                direction_label = "多头 LONG" if pos.side == PositionSide.LONG else "空头 SHORT"
+                tp, sl = self._tp_sl.get(fill.symbol, (0.0, 0.0))
+                self._notifier.notify_open(
+                    symbol=fill.symbol,
+                    direction=direction_label,
+                    qty=float(pos.qty),
+                    price=float(fill.price),
+                    notional=round(float(pos.qty * fill.price), 2),
+                    tp_price=tp if tp > 0 else None,
+                    sl_price=sl if sl > 0 else None,
+                )
+            self._sync_store(fill.symbol)
         elif (pos.side == PositionSide.LONG and fill.side == OrderSide.BUY) or (
             pos.side == PositionSide.SHORT and fill.side == OrderSide.SELL
         ):
@@ -121,6 +160,7 @@ class PositionBook:
                 qty=float(pos.qty),
                 avg_entry=round(float(pos.entry_price), 2),
             )
+            self._sync_store(fill.symbol)
         else:
             # 减仓/平仓
             if fill.qty >= pos.qty:
@@ -170,6 +210,13 @@ class PositionBook:
                     import datetime as _dt
                     close_time_str = _dt.datetime.now().strftime("%m-%d %H:%M")
                     open_time_str = self._open_time.pop(fill.symbol, "--")
+                    if fill.order_id.startswith("tp_"):
+                        close_reason = "止盈"
+                    elif fill.order_id.startswith("sl_"):
+                        close_reason = "止损"
+                    else:
+                        close_reason = "信号反转"
+                    tp, sl = self._tp_sl.get(fill.symbol, (0.0, 0.0))
                     self._store.add_trade(
                         direction=pos.side.value,
                         qty=float(closed_qty),
@@ -177,12 +224,12 @@ class PositionBook:
                         open_price=float(entry_price),
                         close_time=close_time_str,
                         close_price=float(fill.price),
-                        tp=float(pos.mark_price),  # 实际TP/SL需从router传入，此处用标记价占位
-                        sl=0.0,
+                        tp=tp,
+                        sl=sl,
                         gross_pnl=float(pnl),
                         fee=float(fee),
                         net_pnl=float(net_pnl),
-                        close_reason="平仓",
+                        close_reason=close_reason,
                     )
 
                 # Telegram 平仓通知
@@ -199,7 +246,7 @@ class PositionBook:
                         total_realized=round(float(pos.realized_pnl), 2),
                     )
 
-                # 超出部分开反向仓
+                self._sync_store(fill.symbol)
                 if remaining > Decimal("0.0001"):
                     pos.side = PositionSide.LONG if fill.side == OrderSide.BUY else PositionSide.SHORT
                     pos.qty = remaining
@@ -220,6 +267,7 @@ class PositionBook:
                     remaining_qty=float(pos.qty),
                     pnl=round(float(pnl), 2),
                 )
+                self._sync_store(fill.symbol)
 
         logger.debug(
             "position_updated",

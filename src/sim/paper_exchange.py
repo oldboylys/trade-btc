@@ -181,6 +181,12 @@ class PaperExchange(IExchange):
         else:
             self._balance += notional - fill.fee
 
+        # 仓位清零后撤销剩余 TP/SL 挂单，避免误触发
+        pos = self._position_book.get_position(fill.symbol)
+        if not pos or pos.qty == 0:
+            for oid in list(self._engine._open_orders):
+                self._engine.cancel_order(oid)
+
     def _on_order_update(self, order: Order) -> None:
         self._orders[order.client_order_id] = order
         for cb in self._order_callbacks:
