@@ -29,6 +29,9 @@ class StatusStore:
     # 系统信息
     mode: str = "paper"
     strategy: str = "btc_multi_indicator"
+    strategy_version: str = "v2"
+    strategy_config: dict = field(default_factory=dict)
+    strategy_live: dict = field(default_factory=dict)
     started_at: str = ""
     symbol: str = "BTCUSDT"
 
@@ -153,6 +156,11 @@ class StatusStore:
                 "win_trades": len(win_trades),
                 "win_rate": win_rate,
                 "total_net_pnl": round(sum(t["net_pnl"] for t in self.trades), 2),
+            },
+            "strategy": {
+                "version": self.strategy_version,
+                "config": self.strategy_config,
+                "live": self.strategy_live,
             },
             "trades": self.trades,
         }

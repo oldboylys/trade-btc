@@ -82,10 +82,19 @@ async def _run_paper_btc(config: dict) -> None:
     strategy = BTCMultiIndicatorStrategy(
         symbol=strat_cfg.get("symbol", "BTCUSDT"),
         exchange=Exchange.BINANCE,
-        signal_threshold=float(strat_cfg.get("signal_threshold", 0.6)),
+        primary_tf=strat_cfg.get("timeframe", "5m"),
+        trend_tf=strat_cfg.get("trend_timeframe", "1h"),
+        signal_threshold=float(strat_cfg.get("signal_threshold", 0.65)),
+        reversal_threshold=float(strat_cfg.get("reversal_threshold", 0.75)),
+        require_1h_trend=bool(strat_cfg.get("require_1h_trend", True)),
         max_position_usdt=Decimal(str(strat_cfg.get("max_position_usdt", 10000))),
-        tp_pct=float(strat_cfg.get("tp_pct", 0.03)),
-        sl_pct=float(strat_cfg.get("sl_pct", 0.015)),
+        tp_pct=float(strat_cfg.get("tp_pct", 0.05)),
+        sl_pct=float(strat_cfg.get("sl_pct", 0.025)),
+        rsi_long_min=float(strat_cfg.get("rsi_long_min", 45)),
+        rsi_long_max=float(strat_cfg.get("rsi_long_max", 68)),
+        rsi_short_min=float(strat_cfg.get("rsi_short_min", 32)),
+        rsi_short_max=float(strat_cfg.get("rsi_short_max", 55)),
+        rsi_1h_long_max=float(strat_cfg.get("rsi_1h_long_max", 72)),
     )
 
     storage = MarketDataStorage(config.get("market_data", {}).get("db_path", "data/marketdata.db"))
@@ -104,9 +113,24 @@ async def _run_paper_btc(config: dict) -> None:
     paper_ex.position_book.set_notifier(notifier)
     paper_ex.position_book.set_store(store)
 
-    # 风控参数写入 store
+    # 风控参数与策略配置写入 store
     store.daily_loss_limit = float(risk_cfg_raw.get("max_daily_loss_usdt", 1000))
     store.max_position_usdt = float(strat_cfg.get("max_position_usdt", 10000))
+    store.strategy_version = "v2"
+    store.strategy_config = strategy.config_snapshot(
+        primary_tf=strat_cfg.get("timeframe", "5m"),
+        trend_tf=strat_cfg.get("trend_timeframe", "1h"),
+        signal_threshold=float(strat_cfg.get("signal_threshold", 0.65)),
+        reversal_threshold=float(strat_cfg.get("reversal_threshold", 0.75)),
+        require_1h_trend=bool(strat_cfg.get("require_1h_trend", True)),
+        tp_pct=float(strat_cfg.get("tp_pct", 0.05)),
+        sl_pct=float(strat_cfg.get("sl_pct", 0.025)),
+        rsi_long_min=float(strat_cfg.get("rsi_long_min", 45)),
+        rsi_long_max=float(strat_cfg.get("rsi_long_max", 68)),
+        rsi_short_min=float(strat_cfg.get("rsi_short_min", 32)),
+        rsi_short_max=float(strat_cfg.get("rsi_short_max", 55)),
+        rsi_1h_long_max=float(strat_cfg.get("rsi_1h_long_max", 72)),
+    )
 
     # 订阅行情事件
     bus = get_bus()
@@ -138,6 +162,8 @@ async def _run_paper_btc(config: dict) -> None:
             store.has_position = False
 
         target = strategy.on_kline(kline, position_side=current_side)
+        if kline.interval in (strategy.primary_tf, strategy.trend_tf):
+            store.strategy_live = strategy.get_signal_state(position_side=current_side)
         if target is not None:
             if target.tp_price and target.sl_price:
                 paper_ex.position_book.set_tp_sl(
@@ -228,6 +254,7 @@ async def _run_paper_btc(config: dict) -> None:
         except Exception as _exc:
             logger.warning("pipeline_warmup_failed", interval=_wm_iv, error=str(_exc))
     logger.info("pipeline_warmup_done", total=_warmup_total)
+    store.strategy_live = strategy.get_signal_state(position_side=None)
 
     # ── 现货K线 WebSocket（绕过被代理拦截的期货kline流） ──────────
     def _spot_kline_ws_cb(kline) -> None:
@@ -249,7 +276,7 @@ async def _run_paper_btc(config: dict) -> None:
         await notifier._send(
             f"✅ <b>【连接成功】BTC 纸交易系统已启动</b>\n"
             f"品种：{symbol}\n"
-            f"策略：BTC 多指标 v1\n"
+            f"策略：BTC 多指标 v2（Coolish）\n"
             f"行情来源：现货 stream.binance.com（1m/5m/1h）\n"
             f"指标预热：{_warmup_total} 根历史K线已载入\n"
             f"启动时间：{start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC+8\n"

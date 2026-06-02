@@ -1,0 +1,407 @@
+{
+  "sanity": {
+    "trade_rows_loaded": 160421,
+    "trade_rows_manifest": 173113,
+    "note": "loaded rows are execType=Trade only; manifest includes all exec types",
+    "first_time": "2020-05-01 09:03:47.360000+00:00",
+    "last_time": "2026-04-22 15:30:40.784000+00:00",
+    "manifest_first": "2020-05-01T09:03:47.360Z",
+    "manifest_last": "2026-05-03T04:00:00.318Z"
+  },
+  "tier1": {
+    "symbol_concentration_pct": {
+      "XBTUSD": 83.96,
+      "ETHUSD": 10.89,
+      "LTCUSD": 1.68,
+      "XRPUSD": 1.34,
+      "DOTUSDT": 0.46,
+      "DOGEUSDT": 0.37,
+      "DOGEUSD": 0.34,
+      "AXSUSDT": 0.26,
+      "YFIUSDTZ20": 0.09,
+      "UNIUSDT": 0.08,
+      "LINKUSDT": 0.08,
+      "YFIUSDTH21": 0.08,
+      "AAVEUSDT": 0.07,
+      "ADAUSD": 0.06,
+      "ADAUSDT": 0.05
+    },
+    "btc_trade_count": 116707,
+    "total_trade_count": 160421,
+    "btc_notional_share_pct": 94.89,
+    "xbtusd_notional_share_pct": 83.96,
+    "buy_side_pct": 47.61,
+    "sell_side_pct": 52.39,
+    "ord_type_distribution": {
+      "Limit": 55.93,
+      "Market": 43.16,
+      "Stop": 0.9,
+      "StopLimit": 0.01
+    },
+    "limit_order_pct": 55.93,
+    "liquidity": {
+      "added_liquidity_pct": 35.51,
+      "removed_liquidity_pct": 64.49,
+      "maker_dominant": false
+    },
+    "partial_fill_rate_pct": 79.78,
+    "position": {
+      "primary_symbol": "XBTUSD",
+      "trade_count": 98785,
+      "hold_session_count": 231,
+      "hold_hours_median": 8.709988333333333,
+      "hold_hours_p90": 238.03273888888887,
+      "hold_hours_mean": 226.72921287157286,
+      "hold_days_median": 0.3629161805555556,
+      "pct_hold_over_24h": 36.79653679653679,
+      "pct_hold_over_168h": 13.852813852813853,
+      "flip_count_total": 230
+    },
+    "flips_per_year": {
+      "2020": 100,
+      "2021": 100,
+      "2022": 20,
+      "2024": 10
+    },
+    "yearly_breakdown": {
+      "by_year": [
+        {
+          "year": 2020,
+          "trades": 14499,
+          "buy_pct": 50.65,
+          "xbtusd_share_pct": 77.9
+        },
+        {
+          "year": 2021,
+          "trades": 51135,
+          "buy_pct": 46.77,
+          "xbtusd_share_pct": 78.77
+        },
+        {
+          "year": 2022,
+          "trades": 21041,
+          "buy_pct": 47.35,
+          "xbtusd_share_pct": 87.51
+        },
+        {
+          "year": 2023,
+          "trades": 8069,
+          "buy_pct": 45.2,
+          "xbtusd_share_pct": 88.14
+        },
+        {
+          "year": 2024,
+          "trades": 12884,
+          "buy_pct": 47.82,
+          "xbtusd_share_pct": 97.85
+        },
+        {
+          "year": 2025,
+          "trades": 8300,
+          "buy_pct": 49.36,
+          "xbtusd_share_pct": 100.0
+        },
+        {
+          "year": 2026,
+          "trades": 779,
+          "buy_pct": 56.61,
+          "xbtusd_share_pct": 100.0
+        }
+      ]
+    },
+    "size_vs_equity": {
+      "median_trade_pct_equity": 0.3028,
+      "p90_trade_pct_equity": 8.5991,
+      "max_trade_pct_equity": 21760.9336
+    },
+    "funding": {
+      "funding_events": 1825,
+      "funding_total_xbt": 1.35339,
+      "funding_as_pct_of_realised": null
+    },
+    "order_stats": {
+      "order_count": 43219,
+      "ord_type_pct": {
+        "Limit": 81.46,
+        "Market": 18.27,
+        "Stop": 0.26,
+        "StopLimit": 0.0
+      },
+      "stop_px_used_pct": 0.27
+    }
+  },
+  "regime": {
+    "equity_summary": {
+      "baseline_multiple": 1.0,
+      "latest_multiple": 52.364,
+      "max_multiple": 52.44,
+      "max_drawdown_pct": -80.59
+    },
+    "drawdown_episodes": [
+      {
+        "start": "2020-06-25 12:00:00.003000+00:00",
+        "trough": "2020-07-24 12:00:00.005000+00:00",
+        "end": "2020-08-14 12:00:00+00:00",
+        "max_drawdown_pct": -80.59,
+        "recovery_days": 20
+      },
+      {
+        "start": "2020-10-02 12:00:00.010000+00:00",
+        "trough": "2020-11-06 12:00:00.003000+00:00",
+        "end": "2020-11-27 12:00:00.004000+00:00",
+        "max_drawdown_pct": -62.24,
+        "recovery_days": 21
+      },
+      {
+        "start": "2021-04-23 12:00:00.063000+00:00",
+        "trough": "2021-05-17 12:00:00.060000+00:00",
+        "end": "2021-05-25 12:00:00.060000+00:00",
+        "max_drawdown_pct": -43.54,
+        "recovery_days": 8
+      },
+      {
+        "start": "2020-05-04 12:00:00+00:00",
+        "trough": "2020-05-04 12:00:00+00:00",
+        "end": "2020-05-10 12:00:00.003000+00:00",
+        "max_drawdown_pct": -37.83,
+        "recovery_days": 6
+      },
+      {
+        "start": "2020-12-01 12:00:00.005000+00:00",
+        "trough": "2020-12-01 12:00:00.005000+00:00",
+        "end": "2020-12-17 12:00:00.059000+00:00",
+        "max_drawdown_pct": -35.21,
+        "recovery_days": 16
+      },
+      {
+        "start": "2020-12-25 12:00:15.031000+00:00",
+        "trough": "2021-01-07 12:00:00.052000+00:00",
+        "end": "2021-01-14 12:00:00.047000+00:00",
+        "max_drawdown_pct": -32.58,
+        "recovery_days": 6
+      },
+      {
+        "start": "2022-11-09 12:00:00.005000+00:00",
+        "trough": "2022-11-10 12:00:00.026000+00:00",
+        "end": "2023-11-10 12:00:00.074000+00:00",
+        "max_drawdown_pct": -19.11,
+        "recovery_days": 365
+      },
+      {
+        "start": "2021-07-24 12:00:00.055000+00:00",
+        "trough": "2021-07-26 12:00:00.058000+00:00",
+        "end": "2021-09-08 12:00:00.047000+00:00",
+        "max_drawdown_pct": -17.75,
+        "recovery_days": 43
+      },
+      {
+        "start": "2021-10-16 12:00:00.029000+00:00",
+        "trough": "2021-10-26 12:00:00.008000+00:00",
+        "end": "2022-01-22 12:00:00.006000+00:00",
+        "max_drawdown_pct": -15.59,
+        "recovery_days": 87
+      },
+      {
+        "start": "2021-01-27 12:00:00.045000+00:00",
+        "trough": "2021-01-28 12:00:00.063000+00:00",
+        "end": "2021-01-29 12:00:00.060000+00:00",
+        "max_drawdown_pct": -15.11,
+        "recovery_days": 0
+      }
+    ],
+    "withdrawal_alignment": {
+      "withdrawal_count": 5,
+      "withdrawal_total_xbt": 66.0018,
+      "withdrawals_near_equity_peak_pct": 80.0
+    },
+    "regime_compare": [
+      {
+        "regime": "2020-2021",
+        "years": [
+          2020,
+          2021
+        ],
+        "yearly_trades": [
+          {
+            "year": 2020,
+            "trades": 14499,
+            "buy_pct": 50.65,
+            "xbtusd_share_pct": 77.9
+          },
+          {
+            "year": 2021,
+            "trades": 51135,
+            "buy_pct": 46.77,
+            "xbtusd_share_pct": 78.77
+          }
+        ],
+        "long_exposure_day_pct": 82.16
+      },
+      {
+        "regime": "2022",
+        "years": [
+          2022
+        ],
+        "yearly_trades": [
+          {
+            "year": 2022,
+            "trades": 21041,
+            "buy_pct": 47.35,
+            "xbtusd_share_pct": 87.51
+          }
+        ],
+        "long_exposure_day_pct": 95.96
+      },
+      {
+        "regime": "2023-2024",
+        "years": [
+          2023,
+          2024
+        ],
+        "yearly_trades": [
+          {
+            "year": 2023,
+            "trades": 8069,
+            "buy_pct": 45.2,
+            "xbtusd_share_pct": 88.14
+          },
+          {
+            "year": 2024,
+            "trades": 12884,
+            "buy_pct": 47.82,
+            "xbtusd_share_pct": 97.85
+          }
+        ],
+        "long_exposure_day_pct": 98.58
+      },
+      {
+        "regime": "2025+",
+        "years": [
+          2025,
+          2026,
+          2027,
+          2028,
+          2029,
+          2030
+        ],
+        "yearly_trades": [
+          {
+            "year": 2025,
+            "trades": 8300,
+            "buy_pct": 49.36,
+            "xbtusd_share_pct": 100.0
+          },
+          {
+            "year": 2026,
+            "trades": 779,
+            "buy_pct": 56.61,
+            "xbtusd_share_pct": 100.0
+          }
+        ],
+        "long_exposure_day_pct": 100.0
+      }
+    ],
+    "drawdown_exposure_behavior": {
+      "worst_drawdown_pct": -80.59,
+      "window_days": 46,
+      "net_signed_home_sum": 0.681724,
+      "predominant_side": "Long",
+      "verdict": "hold_through"
+    }
+  },
+  "hypotheses": [
+    {
+      "id": "H1",
+      "name": "BTC 趋势跟随 + 限价分批建仓",
+      "evidence": "限价单占比约 55.9%；分批成交（PartiallyFilled）约 79.8%；持仓中位 8.7h、P90 238.0h。",
+      "rule_draft": "1h EMA 趋势过滤；5m/15m 突破或回踩入场；分 2~4 笔阶梯限价建仓，单笔不超过权益 2~5%。",
+      "param_range": {
+        "trend_tf": "1h",
+        "entry_tf": "5m-15m",
+        "ladder_legs": "2-4",
+        "per_leg_pct_equity": "0.5-2.5"
+      },
+      "invalidation": "限价占比低且持仓中位 < 1h 时，假设不成立。",
+      "validation_next": "用 Binance BTCUSDT 5m/1h 回测：突破回踩 + 分批限价成交模型。",
+      "confidence": "中"
+    },
+    {
+      "id": "H2",
+      "name": "多头为主、空头择时",
+      "evidence": "BTC 成交 Buy 占比约 47.6%；2023+ 年均 Buy 约 49.7%。",
+      "rule_draft": "默认只做多；1h 趋势转空且权益回撤 > 10% 时允许对冲空单。",
+      "param_range": {
+        "long_bias": ">55% buys",
+        "short_trigger_dd_pct": "10-20"
+      },
+      "invalidation": "多年 Buy/Sell 接近 50/50 且无 regime 差异。",
+      "validation_next": "分牛熊子样本回测纯多 vs 多+择时空。",
+      "confidence": "低"
+    },
+    {
+      "id": "H3",
+      "name": "Maker 优先执行",
+      "evidence": "AddedLiquidity (Maker) 约 35.5%；RemovedLiquidity (Taker) 约 64.5%。",
+      "rule_draft": "优先 Post-Only 限价；相对 mid 偏移 5~20 bps；超时 30~120s 撤单。",
+      "param_range": {
+        "post_only": true,
+        "offset_bps": "5-20",
+        "cancel_sec": "30-120"
+      },
+      "invalidation": "Taker 占比 > 55%。",
+      "validation_next": "纸交易统计 maker fill rate 与滑点。",
+      "confidence": "低"
+    },
+    {
+      "id": "H4",
+      "name": "波段持有（非剥头皮）",
+      "evidence": "持仓中位 8.7h、P90 238.0h；>24h 持仓占比 36.8%。",
+      "rule_draft": "TP 3~8%、SL 1.5~3%；禁止日内 >3 次反手。",
+      "param_range": {
+        "tp_pct": "3-8",
+        "sl_pct": "1.5-3",
+        "max_flips_per_day": "1-3"
+      },
+      "invalidation": "持仓中位 < 1h 且高频反手。",
+      "validation_next": "对比不同 min_hold_hours 下回测夏普。",
+      "confidence": "中"
+    },
+    {
+      "id": "H5",
+      "name": "盈利后系统性降风险",
+      "evidence": "完成出金 5 笔、合计约 66.00 XBT；峰值附近出金占比 80.0%。",
+      "rule_draft": "权益达滚动高点 95% 后减仓 20~30% 或收紧 trailing stop。",
+      "param_range": {
+        "peak_threshold": "0.95",
+        "trim_pct": "20-30"
+      },
+      "invalidation": "出金与权益高点无时间关联（注意出金≠可交易规则）。",
+      "validation_next": "回测 equity peak trailing de-risk 规则。",
+      "confidence": "中"
+    },
+    {
+      "id": "H6",
+      "name": "资金费意识持仓",
+      "evidence": "资金费事件 1825 笔；累计约 1.35339 XBT。",
+      "rule_draft": "|funding rate| > 0.01% 时缩短持有或反向套利对冲。",
+      "param_range": {
+        "funding_threshold": "0.01-0.05"
+      },
+      "invalidation": "资金费绝对值占盈亏可忽略。",
+      "validation_next": "叠加 funding 序列与持仓方向交叉表。",
+      "confidence": "低-中"
+    },
+    {
+      "id": "H7",
+      "name": "回撤期敞口管理",
+      "evidence": "最大回撤窗口行为：hold_through；净敞口变化 sum=0.681724；主导方向 Long。",
+      "rule_draft": "回撤期扛单；宽 SL 3~5%、小仓位 ≤1% 权益/笔。",
+      "param_range": {
+        "dd_trigger_pct": "15-25"
+      },
+      "invalidation": "回撤期敞口与盈利期无差异。",
+      "validation_next": "标注历次 >20% 回撤窗口内的净仓位变化。",
+      "confidence": "中"
+    }
+  ]
+}

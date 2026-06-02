@@ -1,0 +1,71 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1"/>
+  <title>Coolish 持仓回合 — 可视化结论</title>
+  <style>
+    :root { --bg:#0f1419; --card:#1a2332; --text:#e7ecf3; --muted:#8b9cb3; --accent:#3d9cf5; --win:#2ecc71; --loss:#e74c3c; }
+    * { box-sizing: border-box; }
+    body { font-family: "Microsoft YaHei", system-ui, sans-serif; background: var(--bg); color: var(--text); margin: 0; padding: 24px; line-height: 1.6; }
+    h1 { font-size: 1.6rem; margin-bottom: 8px; }
+    .sub { color: var(--muted); font-size: 0.9rem; margin-bottom: 24px; }
+    .kpis { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 12px; margin-bottom: 28px; }
+    .kpi { background: var(--card); border-radius: 10px; padding: 16px; border-left: 3px solid var(--accent); }
+    .kpi .val { font-size: 1.5rem; font-weight: 700; }
+    .kpi .lbl { font-size: 0.75rem; color: var(--muted); text-transform: uppercase; }
+    .conclusions { background: var(--card); border-radius: 12px; padding: 20px 24px; margin-bottom: 28px; }
+    .conclusions h2 { margin-top: 0; font-size: 1.1rem; }
+    .conclusions ul { margin: 0; padding-left: 1.2rem; }
+    .conclusions li { margin: 8px 0; }
+    .gallery { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 16px; }
+    .card { background: var(--card); border-radius: 10px; overflow: hidden; margin: 0; }
+    .card img { width: 100%; display: block; }
+    .card figcaption { padding: 10px 12px; font-size: 0.85rem; color: var(--muted); }
+    .tag { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.75rem; margin-right: 6px; }
+    .tag-win { background: rgba(46,204,113,.2); color: var(--win); }
+    .tag-loss { background: rgba(231,76,60,.2); color: var(--loss); }
+  </style>
+</head>
+<body>
+  <h1>Coolish 持仓回合 · 可视化结论</h1>
+  <p class="sub">XBTUSD · 229 个持仓回合 · 指标源：成交 lastPx 重采样 K 线 · 本地计算（对齐 TV 参数）</p>
+
+  <div class="kpis">
+    <div class="kpi"><div class="val">48.0%</div><div class="lbl">胜率</div></div>
+    <div class="kpi"><div class="val">8.7h</div><div class="lbl">持仓中位</div></div>
+    <div class="kpi"><div class="val">60%</div><div class="lbl">开仓趋势多头</div></div>
+    <div class="kpi"><div class="val">54.6</div><div class="lbl">开仓 RSI 中位</div></div>
+    <div class="kpi"><div class="val">37%</div><div class="lbl">持仓 &gt;24h</div></div>
+    <div class="kpi"><div class="val">13.36</div><div class="lbl">段内 PnL (XBT)</div></div>
+  </div>
+
+  <section class="conclusions">
+    <h2>核心结论</h2>
+    <ul>
+      <li><span class="tag tag-win">波段</span>中位持仓约 <b>8.7 小时</b>，37.1% 回合超过 24 小时 — 非高频剥头皮风格。</li>
+      <li><span class="tag tag-win">趋势</span>约 <b>60%</b> 回合在 1h EMA20&gt;EMA50 时开仓，偏趋势跟随而非逆势抄底为主。</li>
+      <li><span class="tag">RSI</span>盈利单开仓 RSI 中位 <b>55.34</b>，亏损单 <b>53.06</b> — 差异不大，单靠 RSI 阈值难以区分胜负。</li>
+      <li><span class="tag">多空</span>多头中位持仓 <b>6.0h</b>，空头 <b>19.0h</b> — 空头更偏长线持有。</li>
+      <li><span class="tag tag-loss">聚类</span>最大入场簇（n=74）RSI 偏高（≈70），属「趋势延伸/偏热」区入场。</li>
+    </ul>
+    <h2>五种典型入场形态</h2>
+    <ul><li><b>簇0</b>（46 段）：RSI≈48.3424，趋势多头 100.0% — 中性/震荡区</li><li><b>簇1</b>（74 段）：RSI≈70.615，趋势多头 100.0% — 趋势多头延伸</li><li><b>簇2</b>（45 段）：RSI≈34.0871，趋势多头 8.89% — 逆势/空头环境</li><li><b>簇3</b>（23 段）：RSI≈56.3147，趋势多头 60.87% — 高成交量异动</li><li><b>簇4</b>（41 段）：RSI≈54.5596，趋势多头 0.0% — 非趋势或做空倾向</li></ul>
+  </section>
+
+  <section class="gallery">
+    <figure class="card"><img src="session_overview_dashboard.png" alt="总览仪表盘"/><figcaption>总览仪表盘</figcaption></figure>
+<figure class="card"><img src="session_outcome_pie.png" alt="盈亏结构"/><figcaption>盈亏结构</figcaption></figure>
+<figure class="card"><img src="session_win_loss_indicators.png" alt="盈利 vs 亏损 指标"/><figcaption>盈利 vs 亏损 指标</figcaption></figure>
+<figure class="card"><img src="session_yearly_trends.png" alt="年度演变"/><figcaption>年度演变</figcaption></figure>
+<figure class="card"><img src="session_long_short.png" alt="多空对比"/><figcaption>多空对比</figcaption></figure>
+<figure class="card"><img src="session_clusters_detail.png" alt="聚类详情"/><figcaption>聚类详情</figcaption></figure>
+<figure class="card"><img src="session_rsi_boxplot.png" alt="RSI 箱线图"/><figcaption>RSI 箱线图</figcaption></figure>
+<figure class="card"><img src="session_hold_by_outcome.png" alt="持仓时长"/><figcaption>持仓时长</figcaption></figure>
+<figure class="card"><img src="session_trend_outcome.png" alt="趋势×盈亏"/><figcaption>趋势×盈亏</figcaption></figure>
+<figure class="card"><img src="session_win_loss_rsi.png" alt="RSI 直方图"/><figcaption>RSI 直方图</figcaption></figure>
+  </section>
+
+  <p class="sub" style="margin-top:32px">数据表：<code>sessions_enriched.parquet</code> · 统计：<code>session_analytics.json</code> · 生成：<code>python -m analysis.coolish_archive.session_visualize</code></p>
+</body>
+</html>

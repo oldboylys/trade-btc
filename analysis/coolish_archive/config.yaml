@@ -1,0 +1,41 @@
+# Coolish 公开账本分析配置
+data_dir: "../../../BTC-Trading-Since-2020-main"
+output_dir: "../output"
+
+files:
+  trade_history: "api-v1-execution-tradeHistory.csv"
+  orders: "api-v1-order.csv"
+  wallet_history: "api-v1-user-walletHistory.csv"
+  equity_curve: "derived-equity-curve.csv"
+  manifest: "manifest.json"
+
+# 视为 BTC 主交易对的 symbol（可按实际统计扩展）
+btc_symbols:
+  - "XBTUSD"
+  - "XBTUSDT"
+  - "XBTEUR"
+  - "ETHUSD"  # 早期可能交易，统计时单独列出
+
+chunksize: 50000
+
+# 分周期（年）
+regime_years:
+  - { label: "2020-2021", start: "2020-01-01", end: "2021-12-31" }
+  - { label: "2022", start: "2022-01-01", end: "2022-12-31" }
+  - { label: "2023-2024", start: "2023-01-01", end: "2024-12-31" }
+  - { label: "2025+", start: "2025-01-01", end: "2030-12-31" }
+
+sessions:
+  primary_symbol: XBTUSD
+  min_hold_minutes: 5
+  klines_symbol: BTCUSDT
+  klines_exchange: binance
+  klines_db: "../data/coolish_klines.db"
+  intervals: ["5m", "15m", "1h", "4h"]
+  klines_mode: full
+  # binance | trades_resample（无法访问 Binance 时用成交 lastPx 重采样）
+  klines_source: trades_resample
+  session_window_buffer_hours: 48
+  history_start: "2020-05-01T00:00:00Z"
+  history_end: "2026-04-23T00:00:00Z"
+  position_flat_epsilon: 0.0001

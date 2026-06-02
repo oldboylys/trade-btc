@@ -63,6 +63,14 @@ pytest tests/integration -v
 ## 文档
 
 - [完整使用手册](docs/usage.md)：配置、运行模式、策略逻辑、回测使用、常见问题
+- [Coolish 公开账本策略研究](docs/research/coolish_archive_report.md)：BTC-Trading-Since-2020 行为分析与策略假设
+
+## 研究分析（Coolish 账本）
+
+```bash
+# 需将数据置于 ../BTC-Trading-Since-2020-main 或设置 COOLISH_DATA_DIR
+python -m analysis.coolish_archive.run_all
+```
 
 ## 风险说明
 

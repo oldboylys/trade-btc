@@ -49,10 +49,14 @@ trader --mode paper --strategy btc
 | `mode` | `paper` | 运行模式：paper / testnet / live |
 | `exchanges.binance.enabled` | `true` | 是否启用 Binance |
 | `exchanges.binance.testnet` | `false` | 是否使用 Testnet |
-| `strategies.btc_multi_indicator.signal_threshold` | `0.6` | 信号置信度阈值（0~1） |
+| `strategies.btc_multi_indicator.signal_threshold` | `0.65` | 开仓信号得分阈值（0~1） |
+| `strategies.btc_multi_indicator.reversal_threshold` | `0.75` | 反手信号阈值（高于开仓，减少频繁翻转） |
+| `strategies.btc_multi_indicator.require_1h_trend` | `true` | 必须与 1h EMA 趋势同向才开仓/反手 |
 | `strategies.btc_multi_indicator.max_position_usdt` | `10000` | 最大持仓名义价值 |
-| `strategies.btc_multi_indicator.tp_pct` | `0.03` | 止盈比例（3%） |
-| `strategies.btc_multi_indicator.sl_pct` | `0.015` | 止损比例（1.5%） |
+| `strategies.btc_multi_indicator.tp_pct` | `0.05` | 止盈比例（5%，波段） |
+| `strategies.btc_multi_indicator.sl_pct` | `0.025` | 止损比例（2.5%） |
+| `strategies.btc_multi_indicator.rsi_long_min/max` | `45` / `68` | 5m 做多 RSI 区间（参考 Coolish 盈利单） |
+| `strategies.btc_multi_indicator.rsi_1h_long_max` | `72` | 1h RSI 超过此值不追多 |
 | `strategies.funding_arb.min_funding_spread` | `0.0002` | 套利最小利差（0.02%） |
 | `risk.max_daily_loss_usdt` | `1000` | 日内最大亏损熔断阈值 |
 | `risk.max_consecutive_losses` | `5` | 连续亏损次数熔断阈值 |
@@ -125,25 +129,26 @@ trader --mode live --strategy btc
 
 ## BTC 多指标策略
 
-### 指标体系（5m 主信号 + 1h 趋势过滤）
+> v2 参数依据 [Coolish 持仓回合指标研究](research/coolish_sessions_indicator_report.md)：波段持仓、1h 趋势过滤、放宽 TP/SL。
+
+### 指标体系（5m 主信号 + 1h 趋势硬过滤）
 
 | 指标 | 参数 | 权重 | 多头条件 | 空头条件 |
 |------|------|------|----------|----------|
 | EMA 趋势 | EMA20 vs EMA50 | 0.25 | EMA20 > EMA50 | EMA20 < EMA50 |
 | MACD 柱 | 12/26/9 | 0.25 | MACD 柱 > 0 | MACD 柱 < 0 |
-| RSI | 14 周期 | 0.20 | RSI 在 40~65 | RSI > 70 或 < 35 |
+| RSI | 14 周期 | 0.20 | RSI 在 45~68（5m） | RSI 在 32~55（5m） |
 | 布林带位置 | 20/2σ | 0.15 | 价格 > 中轨 | 价格 < 中轨 |
+| 成交量 | MA20 倍率 | 0.15 | 量比 ≥ 1.2（占优方向） | 同上 |
 
-| 成交量 | MA20 倍率 | 0.15 | 量比 ≥ 1.2 | 量比 ≥ 1.2（双向增强） |
-
-**1h 趋势过滤**：若 1h EMA20/50 方向与信号相反，对应得分惩罚 -0.30。
+**1h 趋势（`require_1h_trend: true`）**：开多/反手多必须 1h EMA20>EMA50；开空必须 1h 空头排列。1h RSI > 72 时不追多。
 
 ### 信号生成逻辑
 
 ```
-多头得分 >= signal_threshold (默认 0.6)  →  开多
-空头得分 >= signal_threshold             →  开空
-两者均低于阈值                            →  持仓不动或平仓
+开仓：得分 >= signal_threshold (0.65) 且 1h 趋势同向 且 得分高于反向
+反手：得分 >= reversal_threshold (0.75) 且满足同上（更难触发）
+持仓中得分回落：不平仓，等待 TP/SL
 ```
 
 ### 下单规则

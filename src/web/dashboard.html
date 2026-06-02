@@ -115,7 +115,9 @@
       <span :class="connected ? 'badge badge-green' : 'badge badge-red'">
         {{ connected ? 'PAPER 运行中' : '连接中...' }}
       </span>
-      <span class="badge badge-gray">BTC 多指标 v1</span>
+      <span class="badge badge-gray">
+        BTC 多指标 {{ data && data.strategy && data.strategy.version ? data.strategy.version : 'v2' }}
+      </span>
       <div class="refresh-bar">
         <div class="dot"></div>
         <span>{{ lastUpdated }}</span>
@@ -210,10 +212,22 @@
           <div class="pos-row"><span class="pos-label">最大持仓</span><span class="pos-value">${{ fmt(data.risk.max_position_usdt) }} USDT</span></div>
         </div>
         <hr />
-        <div class="pos-row"><span class="pos-label">止盈比例</span><span class="pos-value">3.0%</span></div>
-        <div class="pos-row"><span class="pos-label">止损比例</span><span class="pos-value">1.5%</span></div>
-        <div class="pos-row"><span class="pos-label">盈亏比</span><span class="pos-value">2 : 1</span></div>
-        <div class="pos-row"><span class="pos-label">信号阈值</span><span class="pos-value">≥ 0.60</span></div>
+        <div class="pos-row">
+          <span class="pos-label">止盈比例</span>
+          <span class="pos-value">{{ pct(data && data.strategy && data.strategy.config ? data.strategy.config.tp_pct : null) }}</span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">止损比例</span>
+          <span class="pos-value">{{ pct(data && data.strategy && data.strategy.config ? data.strategy.config.sl_pct : null) }}</span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">盈亏比</span>
+          <span class="pos-value">{{ ratio(data && data.strategy && data.strategy.config ? data.strategy.config.tp_pct : null, data && data.strategy && data.strategy.config ? data.strategy.config.sl_pct : null) }}</span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">信号阈值</span>
+          <span class="pos-value">≥ {{ num2(data && data.strategy && data.strategy.config ? data.strategy.config.signal_threshold : null) }}</span>
+        </div>
         <div class="pos-row"><span class="pos-label">手续费</span><span class="pos-value">Taker 0.04%</span></div>
       </div>
     </div>
@@ -221,23 +235,76 @@
 
   <!-- 指标规则 -->
   <div class="card" style="margin-bottom:16px;">
-    <div class="card-header">指标分析逻辑（5m 主信号 + 1h 趋势过滤）</div>
-    <div class="card-body tbl-wrap">
-      <table class="tbl">
-        <thead><tr>
-          <th>指标</th><th>参数</th><th class="center">权重</th>
-          <th>多头触发</th><th>空头触发</th>
-        </tr></thead>
-        <tbody>
-          <tr><td>EMA 趋势</td><td>EMA20 / EMA50</td><td class="center">25%</td><td>EMA20 &gt; EMA50（金叉）</td><td>EMA20 &lt; EMA50（死叉）</td></tr>
-          <tr><td>MACD</td><td>12 / 26 / 9</td><td class="center">25%</td><td>MACD 柱 &gt; 0</td><td>MACD 柱 &lt; 0</td></tr>
-          <tr><td>RSI</td><td>周期 14</td><td class="center">20%</td><td>40 ≤ RSI ≤ 65</td><td>RSI &gt; 70 或 &lt; 35</td></tr>
-          <tr><td>布林带</td><td>20 / 2σ</td><td class="center">15%</td><td>价格 &gt; 中轨</td><td>价格 &lt; 中轨 / 触及上轨</td></tr>
-          <tr><td>成交量</td><td>Vol / MA20</td><td class="center">15%</td><td>Vol-ratio ≥ 1.2×</td><td>Vol-ratio ≥ 1.2×</td></tr>
-        </tbody>
-      </table>
-      <div style="margin-top:10px;font-size:12px;color:var(--muted);">
-        1h 趋势过滤：1h EMA 方向与主信号相反时，对应得分 −0.30，防止逆势开仓。止盈止损通过 TAKE_PROFIT_MARKET + STOP_MARKET 条件单挂单，信号反转时执行路由平仓。
+    <div class="card-header">指标分析逻辑（v2：5m 分值 + 1h 门控）</div>
+    <div class="card-body">
+      <div v-if="data && data.strategy && data.strategy.live && data.strategy.live.ready">
+        <div class="pos-row">
+          <span class="pos-label">实时动作</span>
+          <span :class="actionPillClass(data.strategy.live.action)">{{ actionLabel(data.strategy.live.action) }}</span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">多头得分</span>
+          <span class="pos-value text-green">{{ num3(data.strategy.live.long_score) }}</span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">空头得分</span>
+          <span class="pos-value text-red">{{ num3(data.strategy.live.short_score) }}</span>
+        </div>
+
+        <hr />
+
+        <div class="pos-row">
+          <span class="pos-label">1h 趋势</span>
+          <span v-if="data.strategy.live.trend_1h && data.strategy.live.trend_1h.trend_bullish" class="pill pill-green">
+            bullish
+          </span>
+          <span v-else-if="data.strategy.live.trend_1h && data.strategy.live.trend_1h.trend_bearish" class="pill pill-red">
+            bearish
+          </span>
+          <span v-else class="pill pill-gray">neutral</span>
+        </div>
+
+        <div class="pos-row">
+          <span class="pos-label">1h RSI（多头封锁）</span>
+          <span :class="data.strategy.live.gates.rsi_1h_long_blocked ? 'pill pill-red' : 'pill pill-green'">
+            {{ fmt1(data.strategy.live.trend_1h.rsi14) }} · {{ data.strategy.live.gates.rsi_1h_long_blocked ? 'blocked' : 'ok' }}
+          </span>
+        </div>
+
+        <div class="pos-row">
+          <span class="pos-label">5m RSI 区间</span>
+          <span :class="data.strategy.live.gates.rsi_5m_long_ok ? 'pill pill-green' : 'pill pill-gray'">
+            多 {{ data.strategy.live.gates.rsi_5m_long_ok ? 'OK' : 'NO' }}
+          </span>
+          <span :class="data.strategy.live.gates.rsi_5m_short_ok ? 'pill pill-green' : 'pill pill-gray'" style="margin-left:8px;">
+            空 {{ data.strategy.live.gates.rsi_5m_short_ok ? 'OK' : 'NO' }}
+          </span>
+        </div>
+
+        <hr />
+
+        <div class="pos-row">
+          <span class="pos-label">阈值</span>
+          <span class="pos-value">
+            信号≥ {{ num2(data.strategy.live.signal_threshold) }} · 反手≥ {{ num2(data.strategy.live.reversal_threshold) }}
+          </span>
+        </div>
+        <div class="pos-row">
+          <span class="pos-label">1h 趋势过滤</span>
+          <span class="pos-value">{{ data.strategy.live.gates.require_1h_trend ? '启用' : '关闭' }}</span>
+        </div>
+
+        <div class="pos-row">
+          <span class="pos-label">允许开仓/反转</span>
+          <span :class="data.strategy.live.gates.can_open_long ? 'pill pill-green' : 'pill pill-gray'">开多</span>
+          <span :class="data.strategy.live.gates.can_open_short ? 'pill pill-green' : 'pill pill-gray'" style="margin-left:8px;">开空</span>
+          <span :class="data.strategy.live.gates.can_reverse_long ? 'pill pill-green' : 'pill pill-gray'" style="margin-left:8px;">反转做多</span>
+          <span :class="data.strategy.live.gates.can_reverse_short ? 'pill pill-green' : 'pill pill-gray'" style="margin-left:8px;">反转做空</span>
+        </div>
+      </div>
+
+      <div v-else class="no-pos loading">
+        策略指标预热中 · 等待首次 5m/1h 特征齐全
       </div>
     </div>
   </div>
@@ -310,6 +377,38 @@ createApp({
       return sign + fmt(n);
     };
 
+    const fmt1 = (n) => {
+      if (n === undefined || n === null || Number.isNaN(Number(n))) return '--';
+      return Number(n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    };
+
+    const num2 = (n) => {
+      if (n === undefined || n === null || Number.isNaN(Number(n))) return '--';
+      return Number(n).toLocaleString('en-US', { minimumFractionDigits: 2, maximumFractionDigits: 2 });
+    };
+
+    const num3 = (n) => {
+      if (n === undefined || n === null || Number.isNaN(Number(n))) return '--';
+      return Number(n).toLocaleString('en-US', { minimumFractionDigits: 3, maximumFractionDigits: 3 });
+    };
+
+    const num1 = (n) => {
+      if (n === undefined || n === null || Number.isNaN(Number(n))) return '--';
+      return Number(n).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+    };
+
+    const pct = (x) => {
+      if (x === undefined || x === null || Number.isNaN(Number(x))) return '--';
+      return (Number(x) * 100).toLocaleString('en-US', { minimumFractionDigits: 1, maximumFractionDigits: 1 }) + '%';
+    };
+
+    const ratio = (tp, sl) => {
+      if (tp === undefined || tp === null || sl === undefined || sl === null) return '--';
+      if (Number(sl) === 0 || Number.isNaN(Number(tp)) || Number.isNaN(Number(sl))) return '--';
+      const rr = Number(tp) / Number(sl);
+      return `${num2(rr)} : 1`;
+    };
+
     const pnlClass = (n) => {
       if (!n) return '';
       return n > 0 ? 'text-green' : n < 0 ? 'text-red' : '';
@@ -319,6 +418,30 @@ createApp({
       if (r === '止盈') return 'pill pill-green';
       if (r === '止损') return 'pill pill-red';
       return 'pill pill-blue';
+    };
+
+    const actionLabel = (action) => {
+      switch (action) {
+        case 'open_long': return '开多';
+        case 'open_short': return '开空';
+        case 'reverse_long': return '反转做多';
+        case 'reverse_short': return '反转做空';
+        case 'hold': return '持有';
+        case 'wait': return '等待';
+        default: return action || '--';
+      }
+    };
+
+    const actionPillClass = (action) => {
+      switch (action) {
+        case 'open_long':
+        case 'reverse_long': return 'pill pill-green';
+        case 'open_short':
+        case 'reverse_short': return 'pill pill-red';
+        case 'hold': return 'pill pill-blue';
+        case 'wait': return 'pill pill-gray';
+        default: return 'pill pill-gray';
+      }
     };
 
     const fetchStatus = async () => {
@@ -343,7 +466,24 @@ createApp({
 
     onUnmounted(() => clearInterval(timer));
 
-    return { data, connected, loaded, lastUpdated, fmt, fmtPnl, pnlClass, closeReasonClass };
+    return {
+      data,
+      connected,
+      loaded,
+      lastUpdated,
+      fmt,
+      fmtPnl,
+      fmt1,
+      num1,
+      num2,
+      num3,
+      pct,
+      ratio,
+      pnlClass,
+      closeReasonClass,
+      actionLabel,
+      actionPillClass,
+    };
   }
 }).mount('#app');
 </script>

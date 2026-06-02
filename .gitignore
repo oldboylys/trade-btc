@@ -19,3 +19,9 @@ data/
 coverage.xml
 htmlcov/
 .venv/
+analysis/output/*.png
+analysis/data/
+analysis/output/sessions_enriched.parquet
+analysis/output/sessions_enriched.csv
+analysis/output/indicators/
+analysis/output/session_analytics.json
