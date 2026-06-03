@@ -19,33 +19,14 @@ from src.core.config import load_config
 from src.core.models import Exchange
 from src.marketdata.storage import MarketDataStorage
 from src.risk.manager import RiskConfig
-from src.strategies.btc_multi_indicator.strategy import BTCMultiIndicatorStrategy
+from src.strategies.factory import create_strategy, get_strategy_kind
+from src.strategies.kline_base import KlineStrategy
+from src.strategies.registry import bootstrap, resolve_name
 
 
 def _parse_date(s: str) -> int:
     dt = datetime.datetime.strptime(s, "%Y-%m-%d").replace(tzinfo=datetime.timezone.utc)
     return int(dt.timestamp() * 1000)
-
-
-def _build_strategy(config: dict) -> BTCMultiIndicatorStrategy:
-    strat_cfg = config.get("strategies", {}).get("btc_multi_indicator", {})
-    return BTCMultiIndicatorStrategy(
-        symbol=strat_cfg.get("symbol", "BTCUSDT"),
-        exchange=Exchange.BINANCE,
-        primary_tf=strat_cfg.get("timeframe", "5m"),
-        trend_tf=strat_cfg.get("trend_timeframe", "1h"),
-        signal_threshold=float(strat_cfg.get("signal_threshold", 0.65)),
-        reversal_threshold=float(strat_cfg.get("reversal_threshold", 0.75)),
-        require_1h_trend=bool(strat_cfg.get("require_1h_trend", True)),
-        max_position_usdt=Decimal(str(strat_cfg.get("max_position_usdt", 10000))),
-        tp_pct=float(strat_cfg.get("tp_pct", 0.05)),
-        sl_pct=float(strat_cfg.get("sl_pct", 0.025)),
-        rsi_long_min=float(strat_cfg.get("rsi_long_min", 45)),
-        rsi_long_max=float(strat_cfg.get("rsi_long_max", 68)),
-        rsi_short_min=float(strat_cfg.get("rsi_short_min", 32)),
-        rsi_short_max=float(strat_cfg.get("rsi_short_max", 55)),
-        rsi_1h_long_max=float(strat_cfg.get("rsi_1h_long_max", 72)),
-    )
 
 
 def _format_report(report, start_str: str, end_str: str) -> str:
@@ -57,6 +38,7 @@ def _format_report(report, start_str: str, end_str: str) -> str:
         f"回测区间: {start_str} ~ {end_str}",
         f"总平仓: {report.total_trades} 笔 | 胜率: {report.win_rate * 100:.1f}% "
         f"({report.win_trades}W / {report.loss_trades}L)",
+        f"信号数: {report.total_signals}",
         f"止盈: {tp} | 止损: {sl} | 反转: {rev}",
         f"平均持仓: {report.avg_hold_hours:.1f} 小时",
         f"累计净盈亏: {pnl_sign}{float(report.realized_pnl):,.0f} USDT | "
@@ -68,17 +50,28 @@ def _format_report(report, start_str: str, end_str: str) -> str:
 
 async def _run_backtest(
     config_dir: str,
+    strategy_name: str,
     start: str | None,
     end: str | None,
     output: str | None,
+    force: bool,
 ) -> None:
+    bootstrap()
+    resolved = resolve_name(strategy_name)
+    if get_strategy_kind(resolved) != "kline":
+        raise click.ClickException(f"Strategy '{resolved}' is not a kline strategy (cannot backtest).")
+
     config = load_config(config_dir)
     bt_cfg = config.get("backtest", {})
     risk_cfg_raw = config.get("risk", {})
 
-    symbol = bt_cfg.get("symbol", "BTCUSDT")
+    strategy: KlineStrategy = create_strategy(resolved, config, check_enabled=not force)
+
+    symbol = bt_cfg.get("symbol", strategy.symbol)
     db_path = bt_cfg.get("db_path") or config.get("market_data", {}).get("db_path", "data/marketdata.db")
-    intervals = bt_cfg.get("intervals", ["5m", "1h"])
+    intervals = bt_cfg.get("intervals", [strategy.primary_tf, getattr(strategy, "trend_tf", "1h")])
+    if isinstance(intervals, list):
+        intervals = list(dict.fromkeys(intervals))
     warmup_bars = int(bt_cfg.get("warmup_bars", 500))
     initial_balance = Decimal(str(bt_cfg.get("initial_balance", 100000)))
 
@@ -98,7 +91,6 @@ async def _run_backtest(
     storage = MarketDataStorage(db_path)
     await storage.connect()
 
-    strategy = _build_strategy(config)
     runner = BacktestRunner(
         storage=storage,
         strategy=strategy,
@@ -128,10 +120,12 @@ async def _run_backtest(
         out_path = Path(output)
         out_path.parent.mkdir(parents=True, exist_ok=True)
         payload = {
+            "strategy": resolved,
             "symbol": report.symbol,
             "intervals": report.intervals,
             "start_ms": report.start_ms,
             "end_ms": report.end_ms,
+            "total_signals": report.total_signals,
             "total_trades": report.total_trades,
             "win_trades": report.win_trades,
             "loss_trades": report.loss_trades,
@@ -147,14 +141,29 @@ async def _run_backtest(
         print(f"报告已写入: {out_path}")
 
 
+def _default_strategy(config: dict) -> str:
+    return config.get("strategy", {}).get("default", "btc_multi_indicator")
+
+
 @click.command()
 @click.option("--config-dir", default="config", help="配置目录")
+@click.option("--strategy", default=None, help="策略名（默认 config strategy.default）")
 @click.option("--start", default=None, help="回测起始日期 YYYY-MM-DD")
 @click.option("--end", default=None, help="回测结束日期 YYYY-MM-DD")
 @click.option("--output", default=None, help="JSON 报告输出路径")
-def cli(config_dir: str, start: str | None, end: str | None, output: str | None) -> None:
-    """运行 BTC 多指标策略历史回测."""
-    asyncio.run(_run_backtest(config_dir, start, end, output))
+@click.option("--force", is_flag=True, help="忽略 strategies.<name>.enabled=false")
+def cli(
+    config_dir: str,
+    strategy: str | None,
+    start: str | None,
+    end: str | None,
+    output: str | None,
+    force: bool,
+) -> None:
+    """运行 K 线策略历史回测."""
+    cfg = load_config(config_dir)
+    name = strategy or _default_strategy(cfg)
+    asyncio.run(_run_backtest(config_dir, name, start, end, output, force))
 
 
 if __name__ == "__main__":

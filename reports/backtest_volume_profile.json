@@ -1,0 +1,25 @@
+{
+  "strategy": "volume_profile",
+  "symbol": "BTCUSDT",
+  "intervals": [
+    "5m",
+    "1h"
+  ],
+  "start_ms": 1717350000000,
+  "end_ms": 1780448399999,
+  "total_signals": 10052,
+  "total_trades": 109,
+  "win_trades": 30,
+  "loss_trades": 79,
+  "win_rate": 0.27522935779816515,
+  "avg_hold_hours": 14.410550458715596,
+  "exit_breakdown": {
+    "信号反转": 83,
+    "止损": 9,
+    "止盈": 17
+  },
+  "realized_pnl": -371.232986532384,
+  "max_drawdown": 10.461596530814465,
+  "return_pct": -0.588425471767332,
+  "total_fee": 434.332762027332
+}

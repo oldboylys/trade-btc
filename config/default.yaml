@@ -1,4 +1,8 @@
+# 策略选择与参数说明见 docs/strategies.md
 mode: paper  # paper | testnet | live
+
+strategy:
+  default: btc_multi_indicator  # CLI 未指定 --strategy 时使用
 
 exchanges:
   binance:
@@ -39,10 +43,72 @@ strategies:
     rsi_short_min: 32
     rsi_short_max: 55
     rsi_1h_long_max: 72          # 1h RSI 过热时不追多（高 RSI 簇）
+  # 日内取向：更多开单、更紧 TP/SL，详见 docs/strategies.md
+  btc_multi_indicator_v2:
+    enabled: false
+    symbol: BTCUSDT
+    timeframe: 5m
+    trend_timeframe: 1h
+    signal_threshold: 0.52       # 日内开仓得分阈值
+    reversal_threshold: 0.62
+    min_score_edge: 0.05         # 多空得分至少拉开 0.05
+    require_1h_trend: false      # 不硬性要求 1h 同向
+    require_5m_trend: true       # 5m EMA20/50 与方向一致
+    use_1h_soft_filter: true     # 1h 逆势时需更高得分
+    soft_1h_extra_threshold: 0.08
+    trend_penalty_1h: 0.12       # 软过滤扣分（波段版硬过滤 -0.35）
+    max_position_usdt: 10000
+    tp_pct: 0.015                # 日内止盈 1.5%
+    sl_pct: 0.01                 # 日内止损 1%
+    rsi_oversold_max: 15         # 仅 RSI<=15 允许做多（超卖极端）
+    rsi_overbought_min: 75       # 仅 RSI>=75 允许做空（超买极端）
+    require_rsi_extreme: true
+    vol_spike_ratio: 1.8         # 成交量/20均量 >= 此值视为放量
+    vol_surge_mult: 1.25         # 相对上一根 5m 量能继续跳升
+    vol_spike_score_bonus: 0.12  # 放量+极端 RSI 加分
+    vol_spike_mid_rsi_penalty: 0.25
+    require_vol_spike_for_entry: false
+    rsi_1h_long_max: 78
   funding_arb:
     enabled: false
     min_funding_spread: 0.0002   # 最小套利价差 0.02%
     max_position_usdt: 5000
+  volume_profile:
+    enabled: false
+    symbol: BTCUSDT
+    timeframe: 5m
+    trend_timeframe: 1h
+    profile_timeframe: 5m
+    lookback_bars: 288
+    value_area_pct: 0.70
+    bin_count: 50
+    tick_size: 10
+    entry_mode: val_poc_bounce   # val_poc_bounce | hvn_lvn_reversion
+    require_trend_1h: true
+    max_position_usdt: 10000
+    tp_pct: 0.04
+    sl_pct: 0.02
+    min_distance_to_poc_pct: 0.003
+  ict:
+    enabled: false
+    symbol: BTCUSDT
+    timeframe: 5m
+    structure_timeframe: 1h
+    swing_lookback: 3
+    displacement_atr_mult: 1.5
+    fvg_min_gap_pct: 0.001
+    ob_max_age_bars: 48
+    liquidity_equal_threshold_pct: 0.0005
+    require_premium_discount: true
+    ote_low: 0.62
+    ote_high: 0.79
+    killzone_enabled: false
+    killzone_utc: ["07:00-10:00", "13:00-16:00"]
+    max_position_usdt: 10000
+    tp_pct: 0.05
+    sl_pct: 0.025
+    signal_threshold: 0.6
+    reversal_threshold: 0.75
 
 risk:
   max_position_usdt: 20000

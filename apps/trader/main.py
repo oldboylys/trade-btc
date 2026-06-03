@@ -2,17 +2,13 @@
 from __future__ import annotations
 
 import asyncio
-import atexit
-import datetime
 import signal
 import sys
-from decimal import Decimal
 from pathlib import Path
 from typing import Optional
 
 import click
 
-# 将项目根目录加入 Python 路径
 _ROOT = Path(__file__).parent.parent.parent
 if str(_ROOT) not in sys.path:
     sys.path.insert(0, str(_ROOT))
@@ -20,425 +16,22 @@ if str(_ROOT) not in sys.path:
 from src.core.config import get_config
 from src.core.events import get_bus
 from src.core.logging import configure_logging, get_logger
-from src.core.mode import ModeGuard
-from src.core.models import Exchange, TradingMode
-from src.core.secrets import load_secrets
-from src.core.telegram import init_notifier, send_message_sync
-from src.risk.manager import RiskConfig, RiskManager
-from src.web.status_store import init_store
-from src.web.server import start_server
-
+from src.core.models import TradingMode
+from src.strategies.factory import create_strategy, get_strategy_kind
+from src.strategies.registry import bootstrap, list_cli_choices, resolve_name
+from src.strategies.runner import KlineStrategyRunner
 
 logger = get_logger("trader.main")
 
 
-async def _run_paper_btc(config: dict) -> None:
-    """纸交易 BTC 多指标策略主循环."""
-    from src.sim.paper_exchange import PaperExchange
-    from src.sim.slippage import FeeModel, SlippageModel
-    from src.strategies.btc_multi_indicator.strategy import BTCMultiIndicatorStrategy
-    from src.execution.router import ExecutionRouter
-    from src.marketdata.feed import MarketDataFeed, EVT_KLINE_CLOSED
-    from src.marketdata.storage import MarketDataStorage
-    from src.connectors.binance.connector import BinanceConnector
-
-    strat_cfg = config.get("strategies", {}).get("btc_multi_indicator", {})
-    risk_cfg_raw = config.get("risk", {})
-    tg_cfg = config.get("telegram", {})
-    web_cfg = config.get("web", {})
-
-    # 初始化状态存储
-    store = init_store(mode="paper", strategy="btc_multi_indicator", symbol=strat_cfg.get("symbol", "BTCUSDT"))
-
-    # 初始化 Telegram 通知器
-    secrets = load_secrets()
-    tg_token = secrets.telegram.bot_token or tg_cfg.get("bot_token", "")
-    tg_chat = secrets.telegram.chat_id or tg_cfg.get("chat_id", "")
-    tg_enabled = tg_cfg.get("enabled", True) and bool(tg_token) and bool(tg_chat)
-    notifier = init_notifier(token=tg_token, chat_id=tg_chat, enabled=tg_enabled)
-
-    if tg_enabled:
-        logger.info("telegram_notifier_enabled", chat_id=tg_chat)
-    else:
-        logger.info("telegram_notifier_disabled")
-
-    # 初始化组件
-    paper_ex = PaperExchange(
-        initial_balance=Decimal(str(strat_cfg.get("max_position_usdt", 100000))),
-        fee_model=FeeModel(),
-        slippage_model=SlippageModel(),
-    )
-    await paper_ex.connect()
-
-    risk = RiskManager(RiskConfig(
-        max_position_usdt=Decimal(str(risk_cfg_raw.get("max_position_usdt", 20000))),
-        max_single_order_usdt=Decimal(str(risk_cfg_raw.get("max_single_order_usdt", 5000))),
-        max_daily_loss_usdt=Decimal(str(risk_cfg_raw.get("max_daily_loss_usdt", 1000))),
-    ))
-
-    mode_guard = ModeGuard(TradingMode.PAPER)
-    router = ExecutionRouter(paper_ex, risk, mode_guard, notifier=notifier)
-
-    strategy = BTCMultiIndicatorStrategy(
-        symbol=strat_cfg.get("symbol", "BTCUSDT"),
-        exchange=Exchange.BINANCE,
-        primary_tf=strat_cfg.get("timeframe", "5m"),
-        trend_tf=strat_cfg.get("trend_timeframe", "1h"),
-        signal_threshold=float(strat_cfg.get("signal_threshold", 0.65)),
-        reversal_threshold=float(strat_cfg.get("reversal_threshold", 0.75)),
-        require_1h_trend=bool(strat_cfg.get("require_1h_trend", True)),
-        max_position_usdt=Decimal(str(strat_cfg.get("max_position_usdt", 10000))),
-        tp_pct=float(strat_cfg.get("tp_pct", 0.05)),
-        sl_pct=float(strat_cfg.get("sl_pct", 0.025)),
-        rsi_long_min=float(strat_cfg.get("rsi_long_min", 45)),
-        rsi_long_max=float(strat_cfg.get("rsi_long_max", 68)),
-        rsi_short_min=float(strat_cfg.get("rsi_short_min", 32)),
-        rsi_short_max=float(strat_cfg.get("rsi_short_max", 55)),
-        rsi_1h_long_max=float(strat_cfg.get("rsi_1h_long_max", 72)),
-    )
-
-    storage = MarketDataStorage(config.get("market_data", {}).get("db_path", "data/marketdata.db"))
-    feed = MarketDataFeed(storage)
-
-    # 用真实 Binance 行情（只读，不下单）
-    binance = BinanceConnector(
-        api_key=secrets.binance.api_key,
-        api_secret=secrets.binance.api_secret,
-        testnet=config.get("exchanges", {}).get("binance", {}).get("testnet", False),
-    )
-    await binance.connect()
-    feed.register_exchange("binance", binance)
-
-    # 把 notifier 和 store 注入 position_book
-    paper_ex.position_book.set_notifier(notifier)
-    paper_ex.position_book.set_store(store)
-
-    # 风控参数与策略配置写入 store
-    store.daily_loss_limit = float(risk_cfg_raw.get("max_daily_loss_usdt", 1000))
-    store.max_position_usdt = float(strat_cfg.get("max_position_usdt", 10000))
-    store.strategy_version = "v2"
-    store.strategy_config = strategy.config_snapshot(
-        primary_tf=strat_cfg.get("timeframe", "5m"),
-        trend_tf=strat_cfg.get("trend_timeframe", "1h"),
-        signal_threshold=float(strat_cfg.get("signal_threshold", 0.65)),
-        reversal_threshold=float(strat_cfg.get("reversal_threshold", 0.75)),
-        require_1h_trend=bool(strat_cfg.get("require_1h_trend", True)),
-        tp_pct=float(strat_cfg.get("tp_pct", 0.05)),
-        sl_pct=float(strat_cfg.get("sl_pct", 0.025)),
-        rsi_long_min=float(strat_cfg.get("rsi_long_min", 45)),
-        rsi_long_max=float(strat_cfg.get("rsi_long_max", 68)),
-        rsi_short_min=float(strat_cfg.get("rsi_short_min", 32)),
-        rsi_short_max=float(strat_cfg.get("rsi_short_max", 55)),
-        rsi_1h_long_max=float(strat_cfg.get("rsi_1h_long_max", 72)),
-    )
-
-    # 订阅行情事件
-    bus = get_bus()
-
-    async def on_kline_closed(kline) -> None:
-        logger.info("kline_closed_received", interval=kline.interval,
-                    close=float(kline.close), open_time=kline.open_time)
-        paper_ex.feed_kline(kline)
-
-        # 更新状态存储：行情价格
-        store.mark_price = float(kline.close)
-        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-        store.balance = float(paper_ex.balance)
-        store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
-        store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
-        store.total_fee = float(paper_ex.position_book.total_fee)
-
-        # 更新持仓状态
-        pos_entry = paper_ex.position_book.get_position(kline.symbol)
-        current_side = pos_entry.side if pos_entry and pos_entry.qty > 0 else None
-        if pos_entry and pos_entry.qty > 0:
-            store.has_position = True
-            store.pos_side = pos_entry.side.value
-            store.pos_qty = float(pos_entry.qty)
-            store.pos_entry_price = float(pos_entry.entry_price)
-            store.pos_mark_price = float(pos_entry.mark_price)
-            store.pos_upnl = float(pos_entry.unrealized_pnl)
-        else:
-            store.has_position = False
-
-        target = strategy.on_kline(kline, position_side=current_side)
-        if kline.interval in (strategy.primary_tf, strategy.trend_tf):
-            store.strategy_live = strategy.get_signal_state(position_side=current_side)
-        if target is not None:
-            if target.tp_price and target.sl_price:
-                paper_ex.position_book.set_tp_sl(
-                    kline.symbol,
-                    float(target.tp_price),
-                    float(target.sl_price or 0),
-                )
-            await router.execute(target)
-            store.balance = float(paper_ex.balance)
-            store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
-            store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
-            store.total_fee = float(paper_ex.position_book.total_fee)
-            pos_entry = paper_ex.position_book.get_position(kline.symbol)
-            if pos_entry and pos_entry.qty > 0:
-                logger.info(
-                    "position_snapshot",
-                    symbol=kline.symbol,
-                    qty=float(pos_entry.qty),
-                    entry=float(pos_entry.entry_price),
-                    upnl=float(pos_entry.unrealized_pnl),
-                    balance=float(paper_ex.balance),
-                )
-
-    bus.subscribe(EVT_KLINE_CLOSED, on_kline_closed)
-
-    # bookTicker 实时更新 mark price（kline WS 被代理拦截时的兜底）
-    from src.marketdata.feed import EVT_ORDERBOOK
-    _ob_count = 0
-
-    async def on_orderbook(ob) -> None:
-        nonlocal _ob_count
-        _ob_count += 1
-        if ob.bids and ob.asks:
-            mid = (float(ob.bids[0][0]) + float(ob.asks[0][0])) / 2
-            store.mark_price = round(mid, 2)
-            store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-            paper_ex.position_book.update_mark_price(ob.symbol, Decimal(str(mid)))
-            if store.has_position:
-                pos = paper_ex.position_book.get_position(ob.symbol)
-                if pos:
-                    store.pos_mark_price = round(mid, 2)
-                    store.pos_upnl = float(pos.unrealized_pnl)
-                    store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
-            if _ob_count == 1:
-                logger.info("orderbook_price_first", price=store.mark_price)
-
-    bus.subscribe(EVT_ORDERBOOK, on_orderbook)
-
-    # 每次 tick 同步直接更新价格（绕过 bus，确保实时显示）
-    _tick_count = 0
-
-    def on_tick_sync(kline) -> None:
-        nonlocal _tick_count
-        _tick_count += 1
-        store.mark_price = float(kline.close)
-        store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-        if _tick_count == 1:
-            logger.info("kline_tick_first", symbol=kline.symbol, price=float(kline.close))
-        elif _tick_count % 120 == 0:
-            logger.info("kline_tick_heartbeat", count=_tick_count, price=float(kline.close))
-
-    await feed.start()
-    symbol = strat_cfg.get("symbol", "BTCUSDT")
-    await feed.subscribe("binance", symbol, "1m", on_tick=on_tick_sync)
-
-    # ── 获取聚合器引用（feed.subscribe 已创建） ────────────────
-    from src.core.models import Exchange as _Exchange
-    _agg = feed._get_aggregator(symbol, _Exchange.BINANCE)
-
-    # ── 现货K线去重状态（WS 和 REST 共享，避免重复发布同一根K线） ──
-    _spot_state: dict = {"last_ts": 0, "ws_alive": False}
-
-    # ── 策略指标预热：通过 WS API / REST 批量拉取历史K线 ─────────
-    # 1m=5h / 5m=41h / 1h=6天 历史数据
-    logger.info("pipeline_warmup_starting")
-    _warmup_total = 0
-    for _wm_iv, _wm_limit in [("1h", 150), ("5m", 500), ("1m", 350)]:
-        try:
-            _wm_klines = await asyncio.wait_for(
-                binance.get_spot_klines(symbol, _wm_iv, limit=_wm_limit),
-                timeout=30,
-            )
-            # 跳过最后一根（当前未闭合K线），避免脏数据进入指标缓冲
-            for _kl in _wm_klines[:-1]:
-                strategy._pipeline.feed(_kl)
-                _warmup_total += 1
-            logger.info("pipeline_warmup_ok", interval=_wm_iv, bars=len(_wm_klines) - 1)
-        except Exception as _exc:
-            logger.warning("pipeline_warmup_failed", interval=_wm_iv, error=str(_exc))
-    logger.info("pipeline_warmup_done", total=_warmup_total)
-    store.strategy_live = strategy.get_signal_state(position_side=None)
-
-    # ── 现货K线 WebSocket（绕过被代理拦截的期货kline流） ──────────
-    def _spot_kline_ws_cb(kline) -> None:
-        """现货1m kline回调：实时更新价格 + 经聚合器生成5m/1h K线事件."""
-        on_tick_sync(kline)
-        if kline.is_closed and kline.open_time > _spot_state["last_ts"]:
-            _spot_state["last_ts"] = kline.open_time
-            _spot_state["ws_alive"] = True
-            # 通过聚合器：自动触发 EVT_KLINE_CLOSED（含5m/1h聚合结果）
-            _agg.feed(kline)
-
-    await binance.subscribe_spot_klines(symbol, "1m", callback=_spot_kline_ws_cb)
-
-    logger.info("paper_btc_running", symbol=symbol, mode="paper")
-
-    # ── 系统启动通知 ──────────────────────────────────────
-    start_time = datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)
-    if tg_enabled:
-        await notifier._send(
-            f"✅ <b>【连接成功】BTC 纸交易系统已启动</b>\n"
-            f"品种：{symbol}\n"
-            f"策略：BTC 多指标 v2（Coolish）\n"
-            f"行情来源：现货 stream.binance.com（1m/5m/1h）\n"
-            f"指标预热：{_warmup_total} 根历史K线已载入\n"
-            f"启动时间：{start_time.strftime('%Y-%m-%d %H:%M:%S')} UTC+8\n"
-            f"开仓/平仓将实时推送至此"
-        )
-
-    # ── 每小时持仓状态推送（启动后立即发一条，之后每小时） ─────
-    _hourly_interval = int(tg_cfg.get("hourly_interval_sec", 3600))
-    _disconnect_sent = False
-
-    async def _send_hourly_status() -> None:
-        now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M UTC+8")
-        bal = paper_ex.balance
-        upnl = paper_ex.position_book.total_unrealized_pnl()
-        total_realized = paper_ex.position_book.daily_realized_pnl
-        all_pos = paper_ex.position_book.get_all_positions()
-        btc_price = store.mark_price
-
-        if all_pos:
-            pos = all_pos[0]
-            pos_lines = (
-                f"持仓方向：{pos.side.value}\n"
-                f"持仓数量：{float(pos.qty):.4f} BTC\n"
-                f"开仓均价：${float(pos.entry_price):,.2f}\n"
-                f"当前标价：${float(pos.mark_price):,.2f}\n"
-                f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
-            )
-        else:
-            pos_lines = "当前无持仓\n"
-
-        msg = (
-            f"📈 <b>【每小时状态】{symbol}</b>\n"
-            f"时间：{now}\n"
-            f"BTC 现价：${btc_price:,.2f}\n"
-            f"{'─'*24}\n"
-            f"{pos_lines}"
-            f"{'─'*24}\n"
-            f"可用余额：${float(bal):,.2f} USDT\n"
-            f"今日已实现 PnL：{'+' if total_realized >= 0 else ''}{float(total_realized):,.2f} USDT\n"
-            f"<i>模式：纸交易 PAPER</i>"
-        )
-        if tg_enabled:
-            await notifier._send(msg)
-        logger.info("hourly_status_sent", balance=float(bal), upnl=float(upnl), price=btc_price)
-
-    async def _hourly_status_task() -> None:
-        """启动后立即推送一次，之后按间隔定时推送."""
-        await _send_hourly_status()
-        while True:
-            await asyncio.sleep(_hourly_interval)
-            await _send_hourly_status()
-
-    def _build_disconnect_msg() -> str:
-        stop_time = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime("%Y-%m-%d %H:%M:%S")
-        bal = paper_ex.balance
-        upnl = paper_ex.position_book.total_unrealized_pnl()
-        realized = paper_ex.position_book.daily_realized_pnl
-        runtime = str(datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8) - start_time).split(".")[0]
-        return (
-            f"🔴 <b>【断开连接】BTC 纸交易系统已停止</b>\n"
-            f"停止时间：{stop_time} UTC+8\n"
-            f"{'─'*24}\n"
-            f"BTC 现价：${store.mark_price:,.2f}\n"
-            f"可用余额：${float(bal):,.2f} USDT\n"
-            f"今日已实现 PnL：{'+' if realized >= 0 else ''}{float(realized):,.2f} USDT\n"
-            f"浮动盈亏：{'+' if upnl >= 0 else ''}{float(upnl):,.2f} USDT\n"
-            f"运行时长：{runtime}"
-        )
-
-    async def _send_disconnect_notification() -> None:
-        nonlocal _disconnect_sent
-        if _disconnect_sent or not tg_enabled:
-            return
-        _disconnect_sent = True
-        await notifier._send(_build_disconnect_msg())
-        logger.info("disconnect_notification_sent")
-
-    # atexit 兜底：正常退出或部分信号场景下仍能发断开通知
-    def _atexit_disconnect() -> None:
-        nonlocal _disconnect_sent
-        if _disconnect_sent or not tg_enabled:
-            return
-        if send_message_sync(tg_token, tg_chat, _build_disconnect_msg()):
-            _disconnect_sent = True
-
-    atexit.register(_atexit_disconnect)
-
-    # ── 启动 Web Dashboard 服务 ────────────────────────────
-    web_host = web_cfg.get("host", "127.0.0.1")
-    web_port = int(web_cfg.get("port", 8080))
-    logger.info("dashboard_server_starting", host=web_host, port=web_port)
-    try:
-        web_runner = await start_server(host=web_host, port=web_port)
-    except Exception as exc:
-        logger.error("dashboard_server_failed", error=str(exc), exc_info=True)
-        web_runner = None
-
-    # ── 现货REST轮询兜底：现货WS不通时通过REST驱动策略（每20秒） ──
-    async def _spot_kline_poll_task() -> None:
-        """现货K线REST轮询，WS活跃时仅更新价格，WS断开时兜底驱动策略."""
-        while True:
-            await asyncio.sleep(20)
-            try:
-                klines = await binance.get_spot_klines(symbol, "1m", limit=3)
-                if not klines:
-                    continue
-                # 始终用最新K线的收盘价更新看板价格
-                store.mark_price = float(klines[-1].close)
-                store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-
-                if _spot_state.get("ws_alive"):
-                    # WS 正常工作，REST 只负责价格兜底，不重复推送K线
-                    continue
-
-                # WS 不工作：用REST兜底驱动策略
-                closed = klines[-2] if len(klines) >= 2 else None
-                if closed and closed.is_closed and closed.open_time > _spot_state["last_ts"]:
-                    _spot_state["last_ts"] = closed.open_time
-                    logger.info("spot_rest_kline_closed", close=float(closed.close),
-                                open_time=closed.open_time)
-                    _agg.feed(closed)  # 聚合生成5m/1h → 自动触发 EVT_KLINE_CLOSED
-            except Exception as exc:
-                logger.warning("spot_kline_poll_error", error=str(exc))
-
-    # ── 启动后台任务并运行主循环 ──────────────────────────
-    hourly_task = asyncio.create_task(_hourly_status_task())
-    price_poll_task = asyncio.create_task(_spot_kline_poll_task())
-
-    def _request_shutdown(signum: int | None = None) -> None:
-        logger.info("shutdown_signal_received", signal=signum)
-        bus.stop()
-
-    loop = asyncio.get_running_loop()
-    _shutdown_signals = [signal.SIGINT]
-    if hasattr(signal, "SIGTERM"):
-        _shutdown_signals.append(signal.SIGTERM)
-    if hasattr(signal, "SIGBREAK"):
-        _shutdown_signals.append(signal.SIGBREAK)
-    for sig in _shutdown_signals:
-        try:
-            loop.add_signal_handler(sig, _request_shutdown, sig)
-        except (NotImplementedError, RuntimeError):
-            # Windows 部分环境不支持 add_signal_handler，回退到 signal.signal
-            signal.signal(sig, lambda s, _f, _sig=sig: _request_shutdown(_sig))
-
-    try:
-        await bus.run()
-    finally:
-        for t in (hourly_task, price_poll_task):
-            t.cancel()
-        if web_runner is not None:
-            await web_runner.cleanup()
-        await _send_disconnect_notification()
-        await notifier.close()
-
-
 async def _run_funding_arb(config: dict) -> None:
     """资金费率套利模式."""
-    from src.strategies.funding_arb.strategy import FundingArbStrategy
-    from src.strategies.funding_arb.executor import FundingArbExecutor
+    from decimal import Decimal
+
     from src.connectors.binance.connector import BinanceConnector
     from src.core.secrets import load_secrets
+    from src.strategies.funding_arb.executor import FundingArbExecutor
+    from src.strategies.funding_arb.strategy import FundingArbStrategy
 
     arb_cfg = config.get("strategies", {}).get("funding_arb", {})
     secrets = load_secrets()
@@ -454,7 +47,7 @@ async def _run_funding_arb(config: dict) -> None:
     strategy = FundingArbStrategy(
         symbols=["BTCUSDT"],
         min_spread=Decimal(str(arb_cfg.get("min_funding_spread", "0.0002"))),
-        max_position_usdt=Decimal(str(arb_cfg.get("max_position_usdt", "5000"))),
+        max_position_usdt=Decimal(str(arb_cfg.get("max_position_usdt", 5000))),
     )
     strategy.register_exchange("binance", binance)
 
@@ -466,21 +59,35 @@ async def _run_funding_arb(config: dict) -> None:
     await get_bus().run()
 
 
+def _default_strategy_name(config: dict) -> str:
+    return config.get("strategy", {}).get("default", "btc_multi_indicator")
+
+
 @click.command()
 @click.option("--mode", default=None, type=click.Choice(["paper", "testnet", "live"]),
               help="运行模式（覆盖 config 中的 mode）")
-@click.option("--strategy", default="btc", type=click.Choice(["btc", "funding_arb"]),
-              help="运行策略")
+@click.option("--strategy", default=None, help="运行策略（见 docs/strategies.md）")
+@click.option("--force", is_flag=True, help="忽略 strategies.<name>.enabled=false")
 @click.option("--config-dir", default=None, help="配置目录")
 @click.option("--log-level", default="INFO", help="日志级别")
-def cli(mode: Optional[str], strategy: str, config_dir: Optional[str], log_level: str) -> None:
+def cli(
+    mode: Optional[str],
+    strategy: Optional[str],
+    force: bool,
+    config_dir: Optional[str],
+    log_level: str,
+) -> None:
     """BTC 自动交易系统."""
     import os
+
+    bootstrap()
     if mode:
         os.environ["TRADER_MODE"] = mode
 
     cfg = get_config(config_dir)
     running_mode = TradingMode(cfg.get("mode", "paper"))
+    strategy_name = strategy or _default_strategy_name(cfg)
+    resolved = resolve_name(strategy_name)
 
     configure_logging(
         level=log_level,
@@ -490,23 +97,37 @@ def cli(mode: Optional[str], strategy: str, config_dir: Optional[str], log_level
     logger.info(
         "trader_starting",
         mode=running_mode.value,
-        strategy=strategy,
+        strategy=resolved,
     )
 
-    # 安全检查：live 模式需要明确确认
     if running_mode == TradingMode.LIVE:
         click.confirm(
             "⚠️  You are running in LIVE mode with real funds. Continue?",
             abort=True,
         )
 
+    strat_cfg = cfg.get("strategies", {}).get(resolved, {})
+    if not strat_cfg:
+        raise click.ClickException(f"No config section strategies.{resolved}")
+
+    if not force and not strat_cfg.get("enabled", True):
+        raise click.ClickException(
+            f"Strategy '{resolved}' is disabled (strategies.{resolved}.enabled=false). "
+            "Use --force to override."
+        )
+
+    kind = get_strategy_kind(resolved)
+
     loop = asyncio.new_event_loop()
     asyncio.set_event_loop(loop)
 
-    if strategy == "btc":
-        coro = _run_paper_btc(cfg) if running_mode == TradingMode.PAPER else _run_paper_btc(cfg)
-    else:
+    if kind == "polling":
+        if resolved != "funding_arb":
+            create_strategy(resolved, cfg, check_enabled=not force)
         coro = _run_funding_arb(cfg)
+    else:
+        create_strategy(resolved, cfg, check_enabled=not force)
+        coro = KlineStrategyRunner(resolved, cfg).run()
 
     try:
         loop.run_until_complete(coro)

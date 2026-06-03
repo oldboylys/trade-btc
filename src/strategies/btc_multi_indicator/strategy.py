@@ -2,7 +2,7 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Optional
+from typing import Any, Optional
 
 from src.core.clock import get_clock
 from src.core.logging import get_logger
@@ -10,12 +10,12 @@ from src.core.models import (
     Exchange, Kline, PositionSide, SignalDirection, TargetPosition,
 )
 from src.indicators.pipeline import IndicatorPipeline
-from src.strategies.base import IStrategy
+from src.strategies.kline_base import KlineStrategy
 
 logger = get_logger("strategy.btc_multi_indicator")
 
 
-class BTCMultiIndicatorStrategy(IStrategy):
+class BTCMultiIndicatorStrategy(KlineStrategy):
     """
     BTC 多指标策略 v2（Coolish 研究驱动）
     ─────────────────────────────────────
@@ -49,16 +49,18 @@ class BTCMultiIndicatorStrategy(IStrategy):
         rsi_short_max: float = 55.0,
         rsi_1h_long_max: float = 72.0,
     ) -> None:
-        self.symbol = symbol
-        self.exchange = exchange
-        self.primary_tf = primary_tf
-        self.trend_tf = trend_tf
+        super().__init__(
+            symbol=symbol,
+            exchange=exchange,
+            primary_tf=primary_tf,
+            trend_tf=trend_tf,
+            max_position_usdt=max_position_usdt,
+            tp_pct=tp_pct,
+            sl_pct=sl_pct,
+        )
         self.signal_threshold = signal_threshold
         self.reversal_threshold = reversal_threshold
         self.require_1h_trend = require_1h_trend
-        self.max_position_usdt = max_position_usdt
-        self.tp_pct = tp_pct
-        self.sl_pct = sl_pct
         self.rsi_long_min = rsi_long_min
         self.rsi_long_max = rsi_long_max
         self.rsi_short_min = rsi_short_min
@@ -70,6 +72,26 @@ class BTCMultiIndicatorStrategy(IStrategy):
             max_bars=500,
         )
         self._last_signal: SignalDirection = SignalDirection.FLAT
+
+    @classmethod
+    def from_config(cls, cfg: dict[str, Any]) -> "BTCMultiIndicatorStrategy":
+        return cls(
+            symbol=cfg.get("symbol", "BTCUSDT"),
+            exchange=Exchange.BINANCE,
+            primary_tf=cfg.get("timeframe", "5m"),
+            trend_tf=cfg.get("trend_timeframe", "1h"),
+            signal_threshold=float(cfg.get("signal_threshold", 0.65)),
+            reversal_threshold=float(cfg.get("reversal_threshold", 0.75)),
+            require_1h_trend=bool(cfg.get("require_1h_trend", True)),
+            max_position_usdt=Decimal(str(cfg.get("max_position_usdt", 10000))),
+            tp_pct=float(cfg.get("tp_pct", 0.05)),
+            sl_pct=float(cfg.get("sl_pct", 0.025)),
+            rsi_long_min=float(cfg.get("rsi_long_min", 45)),
+            rsi_long_max=float(cfg.get("rsi_long_max", 68)),
+            rsi_short_min=float(cfg.get("rsi_short_min", 32)),
+            rsi_short_max=float(cfg.get("rsi_short_max", 55)),
+            rsi_1h_long_max=float(cfg.get("rsi_1h_long_max", 72)),
+        )
 
     def on_kline(
         self,

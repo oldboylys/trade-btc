@@ -1,0 +1,25 @@
+{
+  "strategy": "ict",
+  "symbol": "BTCUSDT",
+  "intervals": [
+    "5m",
+    "1h"
+  ],
+  "start_ms": 1717350000000,
+  "end_ms": 1780448399999,
+  "total_signals": 2679,
+  "total_trades": 42,
+  "win_trades": 15,
+  "loss_trades": 27,
+  "win_rate": 0.35714285714285715,
+  "avg_hold_hours": 46.19642857142858,
+  "exit_breakdown": {
+    "止损": 24,
+    "止盈": 14,
+    "信号反转": 4
+  },
+  "realized_pnl": 227.168532598352,
+  "max_drawdown": 10.403330542351135,
+  "return_pct": 0.143391833043222,
+  "total_fee": 167.395176421778
+}

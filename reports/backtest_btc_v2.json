@@ -1,0 +1,25 @@
+{
+  "strategy": "btc_multi_indicator_v2",
+  "symbol": "BTCUSDT",
+  "intervals": [
+    "5m",
+    "1h"
+  ],
+  "start_ms": 1717350000000,
+  "end_ms": 1780448399999,
+  "total_signals": 42995,
+  "total_trades": 237,
+  "win_trades": 99,
+  "loss_trades": 138,
+  "win_rate": 0.4177215189873418,
+  "avg_hold_hours": 8.232067510548523,
+  "exit_breakdown": {
+    "止盈": 99,
+    "止损": 119,
+    "信号反转": 19
+  },
+  "realized_pnl": -547.911744758734,
+  "max_drawdown": 11.009123770872378,
+  "return_pct": 3.935161367927856,
+  "total_fee": 946.858316922144
+}

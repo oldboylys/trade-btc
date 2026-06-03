@@ -34,13 +34,21 @@ pip install -e ".[dev]"
 cp config/secrets.local.yaml.example config/secrets.local.yaml
 # 按需填入 API Key
 
-# 4. 启动纸交易
+# 4. 启动纸交易（策略详见 docs/strategies.md）
+trader --mode paper --strategy btc_multi_indicator
+# 或别名
 trader --mode paper --strategy btc
+
+# Volume Profile / ICT（需在 default.yaml 中 enabled: true 或加 --force）
+trader --mode paper --strategy volume_profile --force
+trader --mode paper --strategy ict --force
 ```
 
 ---
 
 ## 配置说明
+
+策略选择与各策略参数见 **[docs/strategies.md](strategies.md)**。
 
 ### 主配置 `config/default.yaml`
 
@@ -238,9 +246,10 @@ python -m scripts.download_history --start 2024-06-01 --verify-only
 ### 2. 运行回测
 
 ```bash
-backtest --config-dir config --start 2024-06-01 --end 2026-06-01
+python -m apps.backtest.main --config-dir config --strategy btc_multi_indicator --start 2024-06-01
+python -m apps.backtest.main --strategy volume_profile --start 2024-06-01 --force
 # 可选导出 JSON
-backtest --start 2024-06-01 --output reports/backtest.json
+python -m apps.backtest.main --start 2024-06-01 --output reports/backtest.json
 ```
 
 输出示例：
@@ -276,13 +285,15 @@ backtest --start 2024-06-01 --output reports/backtest.json
 ```python
 from src.backtest.runner import BacktestRunner
 from src.marketdata.storage import MarketDataStorage
-from src.strategies.btc_multi_indicator.strategy import BTCMultiIndicatorStrategy
+from src.strategies.factory import create_strategy
+from src.core.config import load_config
 from src.core.models import Exchange
 
 async def run_backtest():
+    config = load_config("config")
     storage = MarketDataStorage("data/marketdata.db")
     await storage.connect()
-    strategy = BTCMultiIndicatorStrategy(signal_threshold=0.65)
+    strategy = create_strategy("btc_multi_indicator", config, check_enabled=False)
     runner = BacktestRunner(storage, strategy, warmup_bars=500, intervals=["5m", "1h"])
     report = await runner.run(
         symbol="BTCUSDT",
