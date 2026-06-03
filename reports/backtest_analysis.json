@@ -1,0 +1,518 @@
+{
+  "meta": {
+    "note": "Binance 历史下载因网络中断，当前使用 2024-06-02~06-05 连续 5m 段（约 3.5 天，1000 根）+ 聚合 1h；非完整 2 年样本。",
+    "period": "2024-06-02 ~ 2024-06-05",
+    "generated_at": "2026-06-03T00:15:49.615255+00:00"
+  },
+  "primary": {
+    "meta": {
+      "symbol": "BTCUSDT",
+      "start": "2024-06-02",
+      "end": "2024-06-05",
+      "intervals": [
+        "5m",
+        "1h"
+      ],
+      "generated_at": "2026-06-03T00:15:47.350540+00:00"
+    },
+    "strategy_config": {
+      "signal_threshold": 0.65,
+      "reversal_threshold": 0.75,
+      "require_1h_trend": true,
+      "tp_pct": 0.05,
+      "sl_pct": 0.025,
+      "max_position_usdt": 10000
+    },
+    "summary": {
+      "total_trades": 0,
+      "win_trades": 0,
+      "loss_trades": 0,
+      "win_rate": 0.0,
+      "avg_hold_hours": 0.0,
+      "realized_pnl": 0.0,
+      "return_pct": 0.0,
+      "max_drawdown_pct": 0.0,
+      "total_fee": 0.0,
+      "total_signals": 0,
+      "initial_balance": 100000.0,
+      "final_balance": 100000.0,
+      "avg_win_usdt": 0,
+      "avg_loss_usdt": 0,
+      "profit_factor": null,
+      "exit_breakdown": {},
+      "hold_buckets": {
+        "<4h": 0,
+        "4-12h": 0,
+        "12-24h": 0,
+        ">24h": 0
+      }
+    },
+    "monthly": {},
+    "equity_curve": [
+      {
+        "ts_ms": 1717314299999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717341899999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717369499999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717397399999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717424999999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717452599999,
+        "balance": 100000.0
+      },
+      {
+        "ts_ms": 1717480499999,
+        "balance": 100000.0
+      }
+    ],
+    "pnl_series": [],
+    "trades": [],
+    "run_params": {
+      "signal_threshold": 0.65
+    }
+  },
+  "sensitivity": [
+    {
+      "signal_threshold": 0.5,
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "realized_pnl": 0.0,
+      "total_signals": 8
+    },
+    {
+      "signal_threshold": 0.55,
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "realized_pnl": 0.0,
+      "total_signals": 8
+    },
+    {
+      "signal_threshold": 0.6,
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "realized_pnl": 0.0,
+      "total_signals": 8
+    },
+    {
+      "signal_threshold": 0.65,
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "realized_pnl": 0.0,
+      "total_signals": 0
+    },
+    {
+      "signal_threshold": 0.7,
+      "total_trades": 0,
+      "win_rate": 0.0,
+      "realized_pnl": 0.0,
+      "total_signals": 0
+    }
+  ],
+  "score_distribution": {
+    "long_hist": [
+      {
+        "range": "0.00-0.15",
+        "count": 154
+      },
+      {
+        "range": "0.15-0.30",
+        "count": 118
+      },
+      {
+        "range": "0.30-0.45",
+        "count": 180
+      },
+      {
+        "range": "0.45-0.60",
+        "count": 52
+      },
+      {
+        "range": "0.60-0.75",
+        "count": 137
+      },
+      {
+        "range": "0.75-0.90",
+        "count": 0
+      },
+      {
+        "range": "0.90-1.01",
+        "count": 0
+      }
+    ],
+    "short_hist": [
+      {
+        "range": "0.00-0.15",
+        "count": 544
+      },
+      {
+        "range": "0.15-0.30",
+        "count": 97
+      },
+      {
+        "range": "0.30-0.45",
+        "count": 0
+      },
+      {
+        "range": "0.45-0.60",
+        "count": 0
+      },
+      {
+        "range": "0.60-0.75",
+        "count": 0
+      },
+      {
+        "range": "0.75-0.90",
+        "count": 0
+      },
+      {
+        "range": "0.90-1.01",
+        "count": 0
+      }
+    ],
+    "long_max": 0.6,
+    "long_avg": 0.31,
+    "short_max": 0.25,
+    "short_avg": 0.045,
+    "samples_above_065": 0,
+    "samples_above_055": 137
+  },
+  "score_timeseries": [
+    {
+      "ts_ms": 1717307999999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 67728.4
+    },
+    {
+      "ts_ms": 1717311599999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 67841.09
+    },
+    {
+      "ts_ms": 1717315199999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 67721.0
+    },
+    {
+      "ts_ms": 1717318799999,
+      "long": 0.2,
+      "short": 0.05,
+      "close": 67750.67
+    },
+    {
+      "ts_ms": 1717322399999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 67529.99
+    },
+    {
+      "ts_ms": 1717325999999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 67529.99
+    },
+    {
+      "ts_ms": 1717329599999,
+      "long": 0.4,
+      "short": 0.0,
+      "close": 68251.52
+    },
+    {
+      "ts_ms": 1717333199999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 67934.99
+    },
+    {
+      "ts_ms": 1717336799999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 68165.98
+    },
+    {
+      "ts_ms": 1717340399999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 68252.5
+    },
+    {
+      "ts_ms": 1717343999999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 68142.17
+    },
+    {
+      "ts_ms": 1717347599999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 68103.63
+    },
+    {
+      "ts_ms": 1717351199999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 67879.28
+    },
+    {
+      "ts_ms": 1717354799999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 67697.14
+    },
+    {
+      "ts_ms": 1717358399999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 67736.95
+    },
+    {
+      "ts_ms": 1717361999999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 67831.2
+    },
+    {
+      "ts_ms": 1717365599999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 67816.14
+    },
+    {
+      "ts_ms": 1717369199999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 67927.99
+    },
+    {
+      "ts_ms": 1717372799999,
+      "long": 0.3,
+      "short": 0.0,
+      "close": 67765.63
+    },
+    {
+      "ts_ms": 1717376399999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 67823.99
+    },
+    {
+      "ts_ms": 1717379999999,
+      "long": 0.4,
+      "short": 0.0,
+      "close": 68476.01
+    },
+    {
+      "ts_ms": 1717383599999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 68416.08
+    },
+    {
+      "ts_ms": 1717387199999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 68382.81
+    },
+    {
+      "ts_ms": 1717390799999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 68510.0
+    },
+    {
+      "ts_ms": 1717394399999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 68700.0
+    },
+    {
+      "ts_ms": 1717397999999,
+      "long": 0.4,
+      "short": 0.0,
+      "close": 69038.94
+    },
+    {
+      "ts_ms": 1717401599999,
+      "long": 0.25,
+      "short": 0.0,
+      "close": 68906.7
+    },
+    {
+      "ts_ms": 1717405199999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 69142.55
+    },
+    {
+      "ts_ms": 1717408799999,
+      "long": 0.25,
+      "short": 0.0,
+      "close": 69014.88
+    },
+    {
+      "ts_ms": 1717412399999,
+      "long": 0.25,
+      "short": 0.0,
+      "close": 68907.99
+    },
+    {
+      "ts_ms": 1717415999999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 69080.0
+    },
+    {
+      "ts_ms": 1717419599999,
+      "long": 0.4,
+      "short": 0.0,
+      "close": 69746.23
+    },
+    {
+      "ts_ms": 1717423199999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 69795.34
+    },
+    {
+      "ts_ms": 1717426799999,
+      "long": 0.3,
+      "short": 0.0,
+      "close": 68776.01
+    },
+    {
+      "ts_ms": 1717430399999,
+      "long": 0.15,
+      "short": 0.0,
+      "close": 69615.28
+    },
+    {
+      "ts_ms": 1717433999999,
+      "long": 0.2,
+      "short": 0.05,
+      "close": 69080.02
+    },
+    {
+      "ts_ms": 1717437599999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 69268.97
+    },
+    {
+      "ts_ms": 1717441199999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 69288.41
+    },
+    {
+      "ts_ms": 1717444799999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 69204.0
+    },
+    {
+      "ts_ms": 1717448399999,
+      "long": 0.2,
+      "short": 0.05,
+      "close": 69101.28
+    },
+    {
+      "ts_ms": 1717451999999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 69081.17
+    },
+    {
+      "ts_ms": 1717455599999,
+      "long": 0.15,
+      "short": 0.1,
+      "close": 69042.51
+    },
+    {
+      "ts_ms": 1717459199999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 68809.9
+    },
+    {
+      "ts_ms": 1717462799999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 69001.41
+    },
+    {
+      "ts_ms": 1717466399999,
+      "long": 0.6,
+      "short": 0.0,
+      "close": 69215.4
+    },
+    {
+      "ts_ms": 1717469999999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 69139.57
+    },
+    {
+      "ts_ms": 1717473599999,
+      "long": 0.45,
+      "short": 0.0,
+      "close": 69170.22
+    },
+    {
+      "ts_ms": 1717477199999,
+      "long": 0.25,
+      "short": 0.0,
+      "close": 69061.22
+    },
+    {
+      "ts_ms": 1717480799999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 68956.01
+    },
+    {
+      "ts_ms": 1717484399999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 68905.43
+    },
+    {
+      "ts_ms": 1717487999999,
+      "long": 0.35,
+      "short": 0.0,
+      "close": 69013.63
+    },
+    {
+      "ts_ms": 1717491599999,
+      "long": 0.0,
+      "short": 0.25,
+      "close": 68836.54
+    },
+    {
+      "ts_ms": 1717495199999,
+      "long": 0.05,
+      "short": 0.05,
+      "close": 68717.92
+    },
+    {
+      "ts_ms": 1717498799999,
+      "long": 0.15,
+      "short": 0.0,
+      "close": 68890.66
+    }
+  ]
+}

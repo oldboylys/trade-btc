@@ -71,3 +71,12 @@ telegram:
 web:
   host: "127.0.0.1"     # 改为 0.0.0.0 可局域网访问
   port: 8081
+
+backtest:
+  db_path: "data/marketdata.db"
+  symbol: BTCUSDT
+  start: "2024-06-01"
+  end: null                        # null = 今天
+  intervals: ["5m", "1h"]
+  warmup_bars: 500
+  initial_balance: 100000

@@ -3,7 +3,9 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import TYPE_CHECKING, Optional
+from typing import TYPE_CHECKING, Callable, Optional
+
+from src.core.clock import get_clock
 
 from src.core.logging import get_logger
 from src.core.models import Exchange, Fill, Order, OrderSide, Position, PositionSide
@@ -68,7 +70,12 @@ class PositionBook:
         self._notifier: Optional["_TelegramNotifier"] = None
         self._store: Optional[object] = None
         self._open_time: dict[str, str] = {}  # symbol -> open_time str
+        self._open_time_ms: dict[str, int] = {}  # symbol -> open_time ms（回测/统计用）
         self._tp_sl: dict[str, tuple[float, float]] = {}  # symbol -> (tp, sl)
+        self._trade_close_hook: Callable[[dict], None] | None = None
+
+    def set_trade_close_hook(self, hook: Callable[[dict], None] | None) -> None:
+        self._trade_close_hook = hook
 
     def set_notifier(self, notifier: "_TelegramNotifier") -> None:
         self._notifier = notifier
@@ -121,6 +128,7 @@ class PositionBook:
             import datetime as _dt
             open_time_str = _dt.datetime.now().strftime("%m-%d %H:%M")
             self._open_time[fill.symbol] = open_time_str
+            self._open_time_ms[fill.symbol] = get_clock().now_ms()
             pos.side = PositionSide.LONG if fill.side == OrderSide.BUY else PositionSide.SHORT
             pos.qty = fill.qty
             pos.entry_price = fill.price
@@ -206,16 +214,34 @@ class PositionBook:
                 )
 
                 # 更新 Web 状态存储（成交记录）
+                close_time_ms = get_clock().now_ms()
+                open_time_ms = self._open_time_ms.pop(fill.symbol, close_time_ms)
+                if fill.order_id.startswith("tp_"):
+                    close_reason = "止盈"
+                elif fill.order_id.startswith("sl_"):
+                    close_reason = "止损"
+                else:
+                    close_reason = "信号反转"
+
+                if self._trade_close_hook is not None:
+                    self._trade_close_hook({
+                        "direction": pos.side.value,
+                        "qty": float(closed_qty),
+                        "entry_price": float(entry_price),
+                        "exit_price": float(fill.price),
+                        "gross_pnl": float(pnl),
+                        "fee": float(fee),
+                        "net_pnl": float(net_pnl),
+                        "close_reason": close_reason,
+                        "open_time_ms": open_time_ms,
+                        "close_time_ms": close_time_ms,
+                        "hold_ms": max(0, close_time_ms - open_time_ms),
+                    })
+
                 if self._store is not None:
                     import datetime as _dt
                     close_time_str = _dt.datetime.now().strftime("%m-%d %H:%M")
                     open_time_str = self._open_time.pop(fill.symbol, "--")
-                    if fill.order_id.startswith("tp_"):
-                        close_reason = "止盈"
-                    elif fill.order_id.startswith("sl_"):
-                        close_reason = "止损"
-                    else:
-                        close_reason = "信号反转"
                     tp, sl = self._tp_sl.get(fill.symbol, (0.0, 0.0))
                     self._store.add_trade(
                         direction=pos.side.value,

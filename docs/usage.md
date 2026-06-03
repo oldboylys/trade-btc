@@ -220,24 +220,58 @@ risk_manager.manual_reset_circuit_break()
 
 ## 回测框架
 
-### 准备历史数据
+回测与纸交易共用同一套策略参数（`config/default.yaml` 中 `strategies.btc_multi_indicator` 与 `risk` 段），
+多周期按 `close_time` 合并回放（同 timestamp 先 1h 后 5m），指标在 `IndicatorPipeline` 中实时计算。
 
-系统在纸交易运行时自动将 K 线落盘到 `data/marketdata.db`（SQLite）。也可手动批量下载：
+### 1. 下载/更新历史数据
 
-```python
-from src.connectors.binance.connector import BinanceConnector
-from src.marketdata.storage import MarketDataStorage
-
-async def download():
-    storage = MarketDataStorage("data/marketdata.db")
-    await storage.connect()
-    binance = BinanceConnector()
-    await binance.connect()
-    klines = await binance.get_klines("BTCUSDT", "5m", limit=1000)
-    await storage.save_klines_bulk(klines)
+```bash
+python -m scripts.download_history --start 2024-06-01
+# 或指定周期
+python -m scripts.download_history --start 2024-06-01 --intervals 5m,1h
+# 仅检查缺口（不下载）
+python -m scripts.download_history --start 2024-06-01 --verify-only
 ```
 
-### 运行回测
+数据写入 `data/marketdata.db`（与纸交易落盘共用）。脚本会**扫描中间缺口**并逐段填补（不仅补首尾）；支持断点续传，网络中断后重跑即可继续。完成后输出覆盖率验证。
+
+### 2. 运行回测
+
+```bash
+backtest --config-dir config --start 2024-06-01 --end 2026-06-01
+# 可选导出 JSON
+backtest --start 2024-06-01 --output reports/backtest.json
+```
+
+输出示例：
+
+```
+回测区间: 2024-06-01 ~ 2026-06-01
+总平仓: 87 笔 | 胜率: 54.0% (47W / 40L)
+止盈: 31 | 止损: 28 | 反转: 28
+平均持仓: 8.5 小时
+累计净盈亏: +1,240 USDT | 最大回撤: 8.3%
+```
+
+### 回测配置（`config/default.yaml` → `backtest` 段）
+
+| 字段 | 说明 |
+|------|------|
+| `db_path` | 历史 K 线 SQLite 路径 |
+| `start` / `end` | 默认回测区间 |
+| `intervals` | 回放周期，策略 v2 需 `5m` + `1h` |
+| `warmup_bars` | 正式统计前 5m 指标预热根数 |
+| `initial_balance` | 初始资金 |
+
+### 胜率定义
+
+以**完整平仓回合**为一笔交易（与 Web 看板成交记录一致）：
+
+- **胜率** = 盈利笔数 / 总平仓笔数
+- **exit_breakdown**：按平仓原因拆分（止盈 / 止损 / 信号反转）
+- 样本量较小时置信区间较宽，请同时关注**总交易次数**
+
+### Python API
 
 ```python
 from src.backtest.runner import BacktestRunner
@@ -248,18 +282,15 @@ from src.core.models import Exchange
 async def run_backtest():
     storage = MarketDataStorage("data/marketdata.db")
     await storage.connect()
-
-    strategy = BTCMultiIndicatorStrategy(signal_threshold=0.55)
-    runner = BacktestRunner(storage, strategy)
-
+    strategy = BTCMultiIndicatorStrategy(signal_threshold=0.65)
+    runner = BacktestRunner(storage, strategy, warmup_bars=500, intervals=["5m", "1h"])
     report = await runner.run(
         symbol="BTCUSDT",
         exchange=Exchange.BINANCE,
-        interval="5m",
+        start_ms=1717200000000,  # 2024-06-01
     )
-    print(f"收益率: {report.return_pct:.2f}%")
-    print(f"最大回撤: {report.max_drawdown:.2f}%")
-    print(f"总手续费: {report.total_fee:.2f} USDT")
+    print(f"胜率: {report.win_rate * 100:.1f}% ({report.total_trades} 笔)")
+    await storage.close()
 ```
 
 ---
@@ -283,3 +314,7 @@ A: 继承 `src/connectors/base.py` 中的 `IExchange` 并实现所有抽象方�
 
 ## 看板
 如果还是看不到，可以在 Cursor 中按 Ctrl+Shift+P 打开命令面板，输入 canvas 查找相关命令打开 Canvas 面板。btc-trading-dashboard
+
+
+#执行回测
+python scripts/backtest_analysis.py

@@ -45,6 +45,7 @@ dev = [
 
 [project.scripts]
 trader = "apps.trader.main:cli"
+backtest = "apps.backtest.main:cli"
 
 [tool.hatch.build.targets.wheel]
 packages = ["src", "apps"]
