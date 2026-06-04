@@ -1,0 +1,21 @@
+# btc_multi_indicator_v2 参数网格（Cartesian 积）
+# 全量约 192 组；建议首次加 --max-runs 24 试跑
+
+base:
+  start: "2024-06-01"
+  end: null
+
+fixed:
+  strategy: btc_multi_indicator_v2
+
+backtest_overrides:
+  risk:
+    max_single_order_usdt: 10000
+
+grid:
+  signal_threshold: [0.48, 0.50, 0.52, 0.54]
+  tp_pct: [0.012, 0.015]
+  sl_pct: [0.008, 0.01]
+  rsi_oversold_max: [12, 15]
+  rsi_overbought_min: [75, 78]
+  vol_spike_ratio: [1.6, 1.8, 2.0]

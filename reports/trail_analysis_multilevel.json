@@ -1,0 +1,219 @@
+{
+  "trail_levels": [
+    [
+      0.25,
+      0.1
+    ],
+    [
+      0.5,
+      0.25
+    ],
+    [
+      0.8,
+      0.4
+    ]
+  ],
+  "total_trades": 66,
+  "trail_activated_trades": 55,
+  "exited_at_original_sl": 12,
+  "exited_at_trail_sl": 40,
+  "tp_hit_during_hold_on_trail_exits": 1,
+  "tp_hit_after_trail_sl_exit": 0,
+  "tp_hit_after_trail_sl_pct": 0.0,
+  "trail_exits_peaked_50pct_but_missed_tp": 15,
+  "avg_max_progress_trail_exits_pct": 45.0,
+  "avg_max_progress_trail_activated_pct": 56.0,
+  "max_progress_buckets_trail_exits": {
+    "<25%": 5,
+    "25-50%": 19,
+    "50-80%": 13,
+    "80-100%": 2,
+    ">=100%(达TP)": 1
+  },
+  "trail_sl_exit_samples": [
+    {
+      "direction": "short",
+      "entry": 67917.594215,
+      "tp": 66932.3,
+      "exit": 67715.841,
+      "final_sl": 67523.5,
+      "max_progress_pct": 105.2,
+      "max_favorable_price": 66881.08,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": true,
+      "net_pnl": 25.6760311542
+    },
+    {
+      "direction": "short",
+      "entry": 73570.086555,
+      "tp": 72502.8,
+      "exit": 73350.606975,
+      "final_sl": 73143.2,
+      "max_progress_pct": 99.09,
+      "max_favorable_price": 72512.49,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 25.85894986056
+    },
+    {
+      "direction": "short",
+      "entry": 67550.208,
+      "tp": 66570.2,
+      "exit": 67240.54347,
+      "final_sl": 67158.2,
+      "max_progress_pct": 89.77,
+      "max_favorable_price": 66670.45,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 41.849710266576
+    },
+    {
+      "direction": "short",
+      "entry": 68221.872,
+      "tp": 67232.2,
+      "exit": 68030.77839,
+      "final_sl": 67974.5,
+      "max_progress_pct": 78.48,
+      "max_favorable_price": 67445.18,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 24.090550900668
+    },
+    {
+      "direction": "short",
+      "entry": 73382.680305,
+      "tp": 72318.1,
+      "exit": 73351.27731,
+      "final_sl": 73116.5,
+      "max_progress_pct": 75.13,
+      "max_favorable_price": 72582.82,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 0.280497834336
+    },
+    {
+      "direction": "short",
+      "entry": 68402.831475,
+      "tp": 67410.5,
+      "exit": 68228.687295,
+      "final_sl": 68154.7,
+      "max_progress_pct": 71.83,
+      "max_favorable_price": 67690.0,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 21.440494941972
+    },
+    {
+      "direction": "short",
+      "entry": 73764.649225,
+      "tp": 72694.5,
+      "exit": 73641.272235,
+      "final_sl": 73497.1,
+      "max_progress_pct": 67.58,
+      "max_favorable_price": 73041.41,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 12.67926494931
+    },
+    {
+      "direction": "short",
+      "entry": 67810.51778,
+      "tp": 66826.8,
+      "exit": 67753.870005,
+      "final_sl": 67564.6,
+      "max_progress_pct": 67.15,
+      "max_favorable_price": 67150.0,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 4.343295368706
+    },
+    {
+      "direction": "short",
+      "entry": 68865.559995,
+      "tp": 67866.5,
+      "exit": 68772.38901,
+      "final_sl": 68615.8,
+      "max_progress_pct": 66.32,
+      "max_favorable_price": 68202.99,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 9.52099426242
+    },
+    {
+      "direction": "short",
+      "entry": 67382.042125,
+      "tp": 66404.5,
+      "exit": 67171.66905,
+      "final_sl": 67137.7,
+      "max_progress_pct": 65.68,
+      "max_favorable_price": 66740.0,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 27.15865229224
+    },
+    {
+      "direction": "short",
+      "entry": 71496.35394,
+      "tp": 70459.1,
+      "exit": 71319.94215,
+      "final_sl": 71237.0,
+      "max_progress_pct": 63.19,
+      "max_favorable_price": 70840.9,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 20.7037338396
+    },
+    {
+      "direction": "short",
+      "entry": 68357.804,
+      "tp": 67366.1,
+      "exit": 68155.230585,
+      "final_sl": 68109.9,
+      "max_progress_pct": 58.57,
+      "max_favorable_price": 67777.0,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 25.595453123836
+    },
+    {
+      "direction": "short",
+      "entry": 71090.267085,
+      "tp": 70058.9,
+      "exit": 71120.312385,
+      "final_sl": 70987.1,
+      "max_progress_pct": 56.66,
+      "max_favorable_price": 70505.88,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": -8.247572918514
+    },
+    {
+      "direction": "short",
+      "entry": 67589.36841,
+      "tp": 66608.8,
+      "exit": 67545.756,
+      "final_sl": 67491.3,
+      "max_progress_pct": 56.53,
+      "max_favorable_price": 67035.04,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 2.4559279248
+    },
+    {
+      "direction": "short",
+      "entry": 68748.658475,
+      "tp": 67751.3,
+      "exit": 68701.81374,
+      "final_sl": 68648.9,
+      "max_progress_pct": 52.13,
+      "max_favorable_price": 68228.76,
+      "tp_hit_after_exit": false,
+      "tp_hit_during_hold": false,
+      "net_pnl": 2.80778137808
+    }
+  ],
+  "start": "2024-06-01",
+  "end": "2026-06-04",
+  "realized_pnl": 1196.661002719166,
+  "total_trades_backtest": 66
+}

@@ -16,6 +16,7 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
       - 开仓仅在 5m RSI 极端区：超卖 ≤ rsi_oversold_max（默认 15）做多，超买 ≥ rsi_overbought_min（默认 75）做空
       - 成交量相对均量剧增（vol_ratio / 短时跳升）时加分或抑制震荡追单
       - 5m EMA 趋势门控 + 1h 软过滤 + 紧 TP/SL
+      - 账户权益 position_pct 复利仓位；分档移动止损锁盈
     """
 
     name = "btc_multi_indicator_v2"
@@ -42,9 +43,13 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         vol_spike_score_bonus: float = 0.12,
         vol_spike_mid_rsi_penalty: float = 0.25,
         require_vol_spike_for_entry: bool = False,
-        max_position_usdt: Decimal = Decimal("10000"),
+        use_position_pct: bool = True,
+        position_pct: float = 0.30,
+        max_position_usdt: Decimal = Decimal("100000"),
         tp_pct: float = 0.015,
         sl_pct: float = 0.01,
+        trail_stop_enabled: bool = True,
+        trail_levels: list[tuple[float, float]] | None = None,
         rsi_1h_long_max: float = 78.0,
     ) -> None:
         # 父类 RSI 区间仅用于评分权重：对齐极端区
@@ -78,10 +83,31 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         self.vol_spike_score_bonus = vol_spike_score_bonus
         self.vol_spike_mid_rsi_penalty = vol_spike_mid_rsi_penalty
         self.require_vol_spike_for_entry = require_vol_spike_for_entry
+        self.use_position_pct = use_position_pct
+        self.position_pct = position_pct
+        self.trail_stop_enabled = trail_stop_enabled
+        self.trail_levels = sorted(
+            trail_levels or [(0.50, 0.25), (0.80, 0.40)],
+            key=lambda x: x[0],
+        )
+        self._account_equity: Decimal = Decimal("0")
         self._prev_vol_ratio: float = 1.0
+
+    def set_account_equity(self, equity: Decimal) -> None:
+        """由 runner / 回测在每根 K 线前注入（余额 + 浮动盈亏）."""
+        self._account_equity = equity
+
+    def _target_notional(self) -> Decimal:
+        if self.use_position_pct and self._account_equity > 0:
+            return (self._account_equity * Decimal(str(self.position_pct))).quantize(
+                Decimal("0.01"),
+            )
+        return self.max_position_usdt
 
     @classmethod
     def from_config(cls, cfg: dict[str, Any]) -> "BTCMultiIndicatorIntradayStrategy":
+        from src.execution.trailing_stop import parse_trail_levels
+
         oversold = float(cfg.get("rsi_oversold_max", cfg.get("rsi_oversold", 15)))
         overbought = float(cfg.get("rsi_overbought_min", cfg.get("rsi_overbought", 75)))
         return cls(
@@ -105,10 +131,49 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             vol_spike_score_bonus=float(cfg.get("vol_spike_score_bonus", 0.12)),
             vol_spike_mid_rsi_penalty=float(cfg.get("vol_spike_mid_rsi_penalty", 0.25)),
             require_vol_spike_for_entry=bool(cfg.get("require_vol_spike_for_entry", False)),
-            max_position_usdt=Decimal(str(cfg.get("max_position_usdt", 10000))),
+            use_position_pct=bool(cfg.get("use_position_pct", True)),
+            position_pct=float(cfg.get("position_pct", 0.30)),
+            max_position_usdt=Decimal(str(cfg.get("max_position_usdt", 100000))),
             tp_pct=float(cfg.get("tp_pct", 0.015)),
             sl_pct=float(cfg.get("sl_pct", 0.01)),
+            trail_stop_enabled=bool(cfg.get("trail_stop_enabled", True)),
+            trail_levels=parse_trail_levels(cfg),
             rsi_1h_long_max=float(cfg.get("rsi_1h_long_max", 78)),
+        )
+
+    def build_target(
+        self,
+        direction,
+        close: Decimal,
+        confidence: float = 0.0,
+        reason: str = "",
+    ):
+        from src.core.clock import get_clock
+        from src.core.models import SignalDirection, TargetPosition
+
+        notional = self._target_notional()
+        tp_price = sl_price = None
+        if direction == SignalDirection.LONG:
+            qty = (notional / close).quantize(Decimal("0.001"))
+            tp_price = (close * Decimal(str(1 + self.tp_pct))).quantize(Decimal("0.1"))
+            sl_price = (close * Decimal(str(1 - self.sl_pct))).quantize(Decimal("0.1"))
+        elif direction == SignalDirection.SHORT:
+            qty = (notional / close).quantize(Decimal("0.001"))
+            tp_price = (close * Decimal(str(1 - self.tp_pct))).quantize(Decimal("0.1"))
+            sl_price = (close * Decimal(str(1 + self.sl_pct))).quantize(Decimal("0.1"))
+        else:
+            qty = Decimal("0")
+
+        return TargetPosition(
+            symbol=self.symbol,
+            exchange=self.exchange,
+            direction=direction,
+            target_qty=qty,
+            confidence=confidence,
+            tp_price=tp_price,
+            sl_price=sl_price,
+            reason=reason,
+            ts_ms=get_clock().now_ms(),
         )
 
     def _is_rsi_oversold(self, rsi: float) -> bool:
@@ -284,6 +349,9 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             rsi = primary.get("rsi14")
             vol = primary.get("vol_ratio")
             state["variant"] = "intraday_v2"
+            state["position_pct"] = self.position_pct
+            state["account_equity"] = float(self._account_equity)
+            state["target_notional"] = float(self._target_notional())
             state["rsi_oversold_max"] = self.rsi_oversold_max
             state["rsi_overbought_min"] = self.rsi_overbought_min
             state["rsi_extreme_long"] = rsi is not None and rsi <= self.rsi_oversold_max
@@ -308,6 +376,8 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             "rsi_oversold_max": kwargs.get("rsi_oversold_max", 15),
             "rsi_overbought_min": kwargs.get("rsi_overbought_min", 75),
             "vol_spike_ratio": kwargs.get("vol_spike_ratio", 1.8),
+            "position_pct": kwargs.get("position_pct", 0.30),
+            "trail_levels": kwargs.get("trail_levels", [[0.50, 0.25], [0.80, 0.40]]),
             "tp_pct": kwargs.get("tp_pct", 0.015),
             "sl_pct": kwargs.get("sl_pct", 0.01),
         }

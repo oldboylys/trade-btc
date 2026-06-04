@@ -3,13 +3,14 @@ from __future__ import annotations
 
 from dataclasses import dataclass, field
 from decimal import Decimal
-from typing import Optional
+from typing import Callable, Optional
 
 from src.backtest.replay import merge_klines_for_replay
 from src.backtest.trade_ledger import BacktestTrade, BacktestTradeLedger, LedgerSummary
 from src.core.clock import SimClock, set_clock
 from src.core.models import Exchange, Kline, TradingMode
 from src.core.mode import ModeGuard
+from src.execution.position_helpers import register_trailing_if_needed, set_strategy_equity
 from src.execution.router import ExecutionRouter
 from src.marketdata.storage import MarketDataStorage
 from src.risk.manager import RiskConfig, RiskManager
@@ -95,6 +96,9 @@ class BacktestRunner:
         risk_config: Optional[RiskConfig] = None,
         warmup_bars: int = 500,
         intervals: Optional[list[str]] = None,
+        bar_hook: Callable[[Kline, PaperExchange], None] | None = None,
+        trail_hook: Callable[[dict], None] | None = None,
+        trade_close_hook: Callable[[dict], None] | None = None,
     ) -> None:
         self.storage = storage
         self.strategy = strategy
@@ -102,6 +106,9 @@ class BacktestRunner:
         self.risk_config = risk_config or RiskConfig()
         self.warmup_bars = warmup_bars
         self.intervals = intervals or ["5m", "1h"]
+        self.bar_hook = bar_hook
+        self.trail_hook = trail_hook
+        self.trade_close_hook = trade_close_hook
 
     async def run(
         self,
@@ -159,7 +166,15 @@ class BacktestRunner:
         await paper_ex.connect()
 
         ledger = BacktestTradeLedger()
-        paper_ex.position_book.set_trade_close_hook(ledger.on_trade_closed)
+        if self.trail_hook is not None:
+            paper_ex.position_book.set_trail_update_hook(self.trail_hook)
+
+        def _on_close(event: dict) -> None:
+            if self.trade_close_hook is not None:
+                self.trade_close_hook(event)
+            ledger.on_trade_closed(event)
+
+        paper_ex.position_book.set_trade_close_hook(_on_close)
 
         risk = RiskManager(self.risk_config)
         mode_guard = ModeGuard(TradingMode.PAPER)
@@ -186,6 +201,14 @@ class BacktestRunner:
         for kline in replay_klines:
             clock.set(kline.close_time)
             paper_ex.feed_kline(kline)
+            if self.bar_hook is not None:
+                self.bar_hook(kline, paper_ex)
+
+            set_strategy_equity(
+                self.strategy,
+                paper_ex.balance,
+                paper_ex.position_book.total_unrealized_pnl(),
+            )
 
             pos_entry = paper_ex.position_book.get_position(kline.symbol)
             current_side = pos_entry.side if pos_entry and pos_entry.qty > 0 else None
@@ -200,6 +223,9 @@ class BacktestRunner:
                         float(target.sl_price or 0),
                     )
                 await router.execute(target)
+                register_trailing_if_needed(
+                    paper_ex.position_book, self.strategy, kline.symbol,
+                )
 
             bar_count += 1
             if bar_count % 100 == 0:

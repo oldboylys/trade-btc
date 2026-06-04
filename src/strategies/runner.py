@@ -14,6 +14,7 @@ from src.core.mode import ModeGuard
 from src.core.models import Exchange, TradingMode
 from src.core.secrets import load_secrets
 from src.core.telegram import init_notifier, send_message_sync
+from src.execution.position_helpers import register_trailing_if_needed, set_strategy_equity
 from src.execution.router import ExecutionRouter
 from src.marketdata.feed import EVT_KLINE_CLOSED, EVT_ORDERBOOK, MarketDataFeed
 from src.marketdata.storage import MarketDataStorage
@@ -118,6 +119,11 @@ class KlineStrategyRunner:
                 open_time=kline.open_time,
             )
             paper_ex.feed_kline(kline)
+            set_strategy_equity(
+                strategy,
+                paper_ex.balance,
+                paper_ex.position_book.total_unrealized_pnl(),
+            )
             store.mark_price = float(kline.close)
             store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
             store.balance = float(paper_ex.balance)
@@ -149,6 +155,9 @@ class KlineStrategyRunner:
                         float(target.sl_price or 0),
                     )
                 await router.execute(target)
+                register_trailing_if_needed(
+                    paper_ex.position_book, strategy, kline.symbol,
+                )
                 store.balance = float(paper_ex.balance)
                 store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
                 store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)

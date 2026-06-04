@@ -9,6 +9,7 @@ from src.core.clock import get_clock
 
 from src.core.logging import get_logger
 from src.core.models import Exchange, Fill, Order, OrderSide, Position, PositionSide
+from src.execution.trailing_stop import TrailingStopState, maybe_raise_stop
 
 logger = get_logger("sim.position_book")
 
@@ -72,6 +73,8 @@ class PositionBook:
         self._open_time: dict[str, str] = {}  # symbol -> open_time str
         self._open_time_ms: dict[str, int] = {}  # symbol -> open_time ms（回测/统计用）
         self._tp_sl: dict[str, tuple[float, float]] = {}  # symbol -> (tp, sl)
+        self._trail: dict[str, TrailingStopState] = {}
+        self._trail_update_hook: Callable[[dict], None] | None = None
         self._trade_close_hook: Callable[[dict], None] | None = None
 
     def set_trade_close_hook(self, hook: Callable[[dict], None] | None) -> None:
@@ -83,8 +86,69 @@ class PositionBook:
     def set_store(self, store: object) -> None:
         self._store = store
 
+    def set_trail_update_hook(self, hook: Callable[[dict], None]) -> None:
+        self._trail_update_hook = hook
+
     def set_tp_sl(self, symbol: str, tp: float, sl: float) -> None:
         self._tp_sl[symbol] = (tp, sl)
+
+    def register_trailing_stop(
+        self,
+        symbol: str,
+        entry: Decimal,
+        tp: Decimal,
+        sl: Decimal,
+        side: PositionSide,
+        *,
+        levels: list[tuple[float, float]] | None = None,
+        activate_progress: float = 0.25,
+        lock_progress: float = 0.10,
+    ) -> None:
+        trail_levels = levels or [(activate_progress, lock_progress)]
+        self._trail[symbol] = TrailingStopState(
+            entry=entry,
+            tp=tp,
+            side=side,
+            levels=trail_levels,
+        )
+        self._tp_sl[symbol] = (float(tp), float(sl))
+
+    def apply_trailing_stop(self, symbol: str, mark: Decimal) -> float | None:
+        """检查是否应上移/下移止损，返回新止损价（无变化则 None）."""
+        state = self._trail.get(symbol)
+        if state is None:
+            return None
+        pos = self._positions.get(symbol)
+        if not pos or pos.qty <= 0:
+            return None
+        tp_f, sl_f = self._tp_sl.get(symbol, (0.0, 0.0))
+        new_sl, level_idx = maybe_raise_stop(state, mark, Decimal(str(sl_f)))
+        if new_sl is None:
+            return None
+        activate, lock = state.levels[state.applied_index]
+        self._tp_sl[symbol] = (tp_f, float(new_sl))
+        logger.info(
+            "trailing_stop_activated",
+            symbol=symbol,
+            new_sl=float(new_sl),
+            mark=float(mark),
+            level_index=level_idx,
+            activate_progress=activate,
+            lock_progress=lock,
+        )
+        if self._trail_update_hook is not None:
+            self._trail_update_hook({
+                "symbol": symbol,
+                "new_sl": float(new_sl),
+                "mark": float(mark),
+                "level_index": level_idx,
+                "activate_progress": activate,
+                "lock_progress": lock,
+                "entry": float(state.entry),
+                "tp": float(state.tp),
+                "side": state.side.value,
+            })
+        return float(new_sl)
 
     def _sync_store(self, symbol: str) -> None:
         """成交后同步 Web 看板持仓状态."""
@@ -106,6 +170,7 @@ class PositionBook:
             self._store.pos_qty = 0.0
             self._store.pos_upnl = 0.0
             self._tp_sl.pop(symbol, None)
+            self._trail.pop(symbol, None)
 
     def on_fill(self, fill: Fill) -> None:
         key = fill.symbol
@@ -224,7 +289,10 @@ class PositionBook:
                     close_reason = "信号反转"
 
                 if self._trade_close_hook is not None:
+                    tp_at_close, sl_at_close = self._tp_sl.get(fill.symbol, (0.0, 0.0))
+                    trail = self._trail.get(fill.symbol)
                     self._trade_close_hook({
+                        "symbol": fill.symbol,
                         "direction": pos.side.value,
                         "qty": float(closed_qty),
                         "entry_price": float(entry_price),
@@ -236,6 +304,10 @@ class PositionBook:
                         "open_time_ms": open_time_ms,
                         "close_time_ms": close_time_ms,
                         "hold_ms": max(0, close_time_ms - open_time_ms),
+                        "tp": float(tp_at_close),
+                        "sl": float(sl_at_close),
+                        "trail_applied": trail is not None and trail.applied_index >= 0,
+                        "trail_level_index": trail.applied_index if trail else -1,
                     })
 
                 if self._store is not None:

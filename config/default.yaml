@@ -57,9 +57,18 @@ strategies:
     use_1h_soft_filter: true     # 1h 逆势时需更高得分
     soft_1h_extra_threshold: 0.08
     trend_penalty_1h: 0.12       # 软过滤扣分（波段版硬过滤 -0.35）
-    max_position_usdt: 10000
-    tp_pct: 0.015                # 日内止盈 1.5%
-    sl_pct: 0.01                 # 日内止损 1%
+    # --- 开仓 ---
+    use_position_pct: true       # 按账户权益比例开仓（复利）
+    position_pct: 0.30           # 每次名义 = 权益 × 30%
+    max_position_usdt: 100000    # use_position_pct=false 时的固定名义上限
+    # --- 止盈 / 止损（开仓时挂条件单，相对开仓价）---
+    tp_pct: 0.015                # 止盈 1.5%
+    sl_pct: 0.01                 # 初始止损 1%
+    # --- 移动止损（持仓中向 TP 推进后递进抬止损，仅以下两档）---
+    trail_stop_enabled: true
+    trail_levels:
+      - [0.50, 0.25]            # 推进至 entry→TP 的 50% 时，止损抬至 25% 处
+      - [0.80, 0.40]            # 推进至 80% 时，止损抬至 40% 处
     rsi_oversold_max: 15         # 仅 RSI<=15 允许做多（超卖极端）
     rsi_overbought_min: 75       # 仅 RSI>=75 允许做空（超买极端）
     require_rsi_extreme: true
@@ -112,7 +121,7 @@ strategies:
 
 risk:
   max_position_usdt: 20000
-  max_single_order_usdt: 5000
+  max_single_order_usdt: 50000      # 支持 V2 30% 权益仓位（10万本金约 3万/笔）
   max_daily_loss_usdt: 1000
   max_consecutive_losses: 5
   price_deviation_pct: 0.05    # 行情异常保护 5%

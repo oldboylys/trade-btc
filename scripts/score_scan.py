@@ -1,4 +1,6 @@
 """全周期信号/得分扫描（含正确预热）."""
+from __future__ import annotations
+
 import asyncio
 import sys
 from pathlib import Path
@@ -6,20 +8,27 @@ from pathlib import Path
 _ROOT = Path(__file__).parent.parent
 sys.path.insert(0, str(_ROOT))
 
-from apps.backtest.main import _build_strategy, _parse_date
-from src.backtest.runner import _split_warmup_replay, _warmup_indicators
 from src.backtest.replay import merge_klines_for_replay
+from src.backtest.runner import _split_warmup_replay, _warmup_indicators
+from src.backtest.session import parse_date
 from src.core.config import load_config
 from src.core.models import Exchange, PositionSide
 from src.marketdata.storage import MarketDataStorage
+from src.strategies.factory import create_strategy
+from src.strategies.registry import bootstrap
 
 
-async def main():
+async def main(
+    strategy_name: str = "btc_multi_indicator",
+    start: str = "2024-06-01",
+    end: str = "2026-06-03",
+) -> None:
+    bootstrap()
     config = load_config("config")
-    start_ms = _parse_date("2024-06-01")
-    end_ms = _parse_date("2026-06-03")
-    strat = config["strategies"]["btc_multi_indicator"]
-    th = float(strat.get("signal_threshold", 0.65))
+    start_ms = parse_date(start)
+    end_ms = parse_date(end)
+    strat_cfg = config.get("strategies", {}).get(strategy_name, {})
+    th = float(strat_cfg.get("signal_threshold", 0.65))
 
     storage = MarketDataStorage("data/marketdata.db")
     await storage.connect()
@@ -28,7 +37,7 @@ async def main():
     merged = merge_klines_for_replay({"5m": k5, "1h": k1})
     warmup, replay = _split_warmup_replay(merged, 500, "5m")
 
-    strategy = _build_strategy(config)
+    strategy = create_strategy(strategy_name, config, check_enabled=False)
     _warmup_indicators(strategy, warmup)
 
     max_l = max_s = 0.0
@@ -57,10 +66,17 @@ async def main():
                 else None
             )
 
-    print(f"replay_5m_bars={n5} warmup_bars={sum(1 for k in warmup if k.interval=='5m')}")
+    print(f"strategy={strategy_name} replay_5m_bars={n5}")
     print(f"threshold={th} max_long={max_l:.3f} max_short={max_s:.3f}")
     print(f"bars_score>={th}: {above_th} signals={signals}")
     await storage.close()
 
 
-asyncio.run(main())
+if __name__ == "__main__":
+    import argparse
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--strategy", default="btc_multi_indicator")
+    ap.add_argument("--start", default="2024-06-01")
+    ap.add_argument("--end", default="2026-06-03")
+    ns = ap.parse_args()
+    asyncio.run(main(ns.strategy, ns.start, ns.end))

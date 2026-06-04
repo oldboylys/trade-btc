@@ -77,7 +77,10 @@ python -m apps.backtest.main --strategy ict --start 2024-06-01
 | `require_1h_trend` | `false` | 不强制 1h 同向 |
 | `require_5m_trend` | `true` | 5m EMA20/50 与方向一致 |
 | `use_1h_soft_filter` | `true` | 1h 逆势时需 +0.08 得分 |
-| `tp_pct` / `sl_pct` | `0.015` / `0.01` | 日内止盈止损 |
+| `use_position_pct` / `position_pct` | `true` / `0.30` | 按权益 30% 复利开仓 |
+| `tp_pct` / `sl_pct` | `0.015` / `0.01` | 开仓时挂止盈 / 初始止损（相对开仓价） |
+| `trail_stop_enabled` | `true` | 持仓中启用移动止损 |
+| `trail_levels` | `[0.50,0.25]`, `[0.80,0.40]` | 向 TP 推进 50%→止损抬至 25% 位；推进 80%→抬至 40% 位 |
 | `rsi_oversold_max` | `15` | 做多须 5m RSI ≤ 此值 |
 | `rsi_overbought_min` | `75` | 做空须 5m RSI ≥ 此值 |
 | `vol_spike_ratio` | `1.8` | 相对 20 均量放量阈值 |
@@ -88,6 +91,34 @@ python -m apps.backtest.main --strategy ict --start 2024-06-01
 ```bash
 python -m apps.backtest.main --strategy btc_multi_indicator_v2 --force --start 2024-06-01
 ```
+
+### V2 参数扫回测
+
+批量改参、回测并写入对比表（`reports/sweeps/btc_v2/`）：
+
+```bash
+# 网格扫参（YAML 定义 Cartesian 积，建议首次加 --max-runs）
+python scripts/sweep_btc_v2.py --grid config/sweeps/btc_v2_grid.yaml --max-runs 24 --resume
+
+# 单次改参并追加记录
+python scripts/sweep_btc_v2.py --set signal_threshold=0.52 --set vol_spike_ratio=2.0
+
+# 详细 JSON 报告（含 trades / 月度 PnL）
+python scripts/run_backtest_report.py --strategy btc_multi_indicator_v2 --set signal_threshold=0.52
+```
+
+产出文件：
+
+| 文件 | 说明 |
+|------|------|
+| `reports/sweeps/btc_v2/runs/{run_id}.json` | 单次完整结果 + `params` 快照 |
+| `reports/sweeps/btc_v2/runs.jsonl` | 追加日志（每行 summary + params） |
+| `reports/sweeps/btc_v2/leaderboard.csv` | 全量对比表（按净盈亏排序） |
+| `reports/sweeps/btc_v2/leaderboard.json` | 同上，JSON 数组 |
+
+网格 YAML 字段：`base.start/end`、`grid.*`（参数列表）、`backtest_overrides.risk`（可选，如对齐 `max_single_order_usdt`）。
+
+**注意**：两年全量单次约 8–9 分钟；192 组网格需数小时，请用 `--max-runs` 或缩短 `end` 试跑。
 
 ---
 

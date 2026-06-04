@@ -63,6 +63,9 @@ trader --mode paper --strategy ict --force
 | `strategies.btc_multi_indicator.max_position_usdt` | `10000` | 最大持仓名义价值 |
 | `strategies.btc_multi_indicator.tp_pct` | `0.05` | 止盈比例（5%，波段） |
 | `strategies.btc_multi_indicator.sl_pct` | `0.025` | 止损比例（2.5%） |
+| `strategies.btc_multi_indicator_v2.position_pct` | `0.30` | 开仓名义 = 账户权益 × 此比例 |
+| `strategies.btc_multi_indicator_v2.tp_pct` / `sl_pct` | `0.015` / `0.01` | V2 止盈 / 初始止损 |
+| `strategies.btc_multi_indicator_v2.trail_levels` | `[[0.50,0.25],[0.80,0.40]]` | V2 移动止损两档（见 strategies.md） |
 | `strategies.btc_multi_indicator.rsi_long_min/max` | `45` / `68` | 5m 做多 RSI 区间（参考 Coolish 盈利单） |
 | `strategies.btc_multi_indicator.rsi_1h_long_max` | `72` | 1h RSI 超过此值不追多 |
 | `strategies.funding_arb.min_funding_spread` | `0.0002` | 套利最小利差（0.02%） |
@@ -154,7 +157,7 @@ trader --mode live --strategy btc
 ### 信号生成逻辑
 
 ```
-开仓：得分 >= signal_threshold (0.65) 且 1h 趋势同向 且 得分高于反向
+开仓：得分 >= 0.(0.65) 且 1h 趋势同向 且 得分高于反向
 反手：得分 >= reversal_threshold (0.75) 且满足同上（更难触发）
 持仓中得分回落：不平仓，等待 TP/SL
 ```
@@ -170,6 +173,16 @@ trader --mode live --strategy btc
 
 - 止盈：`当前价格 × (1 + tp_pct)`（多头），`× (1 - tp_pct)`（空头）
 - 止损：`当前价格 × (1 - sl_pct)`（多头），`× (1 + sl_pct)`（空头）
+
+**btc_multi_indicator_v2 移动止损**（`config/default.yaml` → `strategies.btc_multi_indicator_v2`）：
+
+| 推进进度（entry→TP） | 止损抬至 |
+|---------------------|----------|
+| 50% | 25% 处 |
+| 80% | 40% 处 |
+
+关闭移动止损：`trail_stop_enabled: false`
+
 - 先用**交易所原生条件单**（TAKE_PROFIT_MARKET / STOP_MARKET）
 - 若条件单被撤，策略侧 `PaperMatchingEngine` 作为备份
 
@@ -250,6 +263,12 @@ python -m apps.backtest.main --config-dir config --strategy btc_multi_indicator 
 python -m apps.backtest.main --strategy volume_profile --start 2024-06-01 --force
 # 可选导出 JSON
 python -m apps.backtest.main --start 2024-06-01 --output reports/backtest.json
+```
+
+**V2 批量扫参**（自动记录对比表）：见 [docs/strategies.md — V2 参数扫回测](strategies.md#v2-参数扫回测)
+
+```bash
+python scripts/sweep_btc_v2.py --grid config/sweeps/btc_v2_grid.yaml --max-runs 24 --resume
 ```
 
 输出示例：

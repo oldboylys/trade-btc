@@ -1,0 +1,26 @@
+{
+  "strategy": "btc_multi_indicator_v2",
+  "symbol": "BTCUSDT",
+  "intervals": [
+    "5m",
+    "1h"
+  ],
+  "start_ms": 1717350000000,
+  "end_ms": 1780477199999,
+  "start": "2024-06-01",
+  "end": "2026-06-04",
+  "total_trades": 66,
+  "win_trades": 43,
+  "loss_trades": 23,
+  "win_rate": 0.6515,
+  "avg_hold_hours": 5.47,
+  "realized_pnl": 1196.661002719166,
+  "return_pct": 10.892659803867996,
+  "max_drawdown_pct": 18.549413893273353,
+  "total_fee": 531.076527387004,
+  "total_signals": 1187,
+  "exit_breakdown": {
+    "止损": 52,
+    "止盈": 14
+  }
+}

@@ -50,7 +50,19 @@ class PaperExchange(IExchange):
     def feed_kline(self, kline: Kline) -> None:
         self._mark_prices[kline.symbol] = kline.close
         self._position_book.update_mark_price(kline.symbol, kline.close)
+        new_sl = self._position_book.apply_trailing_stop(kline.symbol, kline.close)
+        if new_sl is not None:
+            self._sync_stop_order(kline.symbol, Decimal(str(new_sl)))
         self._engine.on_kline(kline)
+
+    def _sync_stop_order(self, symbol: str, new_stop: Decimal) -> None:
+        """更新挂单中的止损触发价."""
+        for order in self._engine._open_orders.values():
+            if order.symbol != symbol:
+                continue
+            if order.order_type == OrderType.STOP_MARKET:
+                order.stop_price = new_stop
+                return
 
     def feed_orderbook(self, ob: OrderBook) -> None:
         if ob.mid_price:
