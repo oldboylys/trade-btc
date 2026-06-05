@@ -1,5 +1,6 @@
 # btc_multi_indicator_v2 参数网格（Cartesian 积）
-# 全量约 192 组；建议首次加 --max-runs 24 试跑
+# 全量 2000 组 = 10 × 4 × 5 × 5 × 2
+# 断点续跑: --resume
 
 base:
   start: "2024-06-01"
@@ -7,15 +8,27 @@ base:
 
 fixed:
   strategy: btc_multi_indicator_v2
+  trail_levels:
+    - [0.50, 0.25]
+    - [0.80, 0.40]
+  # 以下在 2000 组内固定，避免组合爆炸；可改用 --set 单点试探
+  rsi_oversold_max: 15
+  rsi_overbought_min: 78
+  vol_spike_ratio: 1.8
+  position_pct: 0.30
+  min_score_edge: 0.05
 
 backtest_overrides:
   risk:
-    max_single_order_usdt: 10000
+    max_single_order_usdt: 50000
 
 grid:
-  signal_threshold: [0.48, 0.50, 0.52, 0.54]
-  tp_pct: [0.012, 0.015]
-  sl_pct: [0.008, 0.01]
-  rsi_oversold_max: [12, 15]
-  rsi_overbought_min: [75, 78]
-  vol_spike_ratio: [1.6, 1.8, 2.0]
+  # 开仓阈值（扩大区间）
+  signal_threshold: [0.42, 0.44, 0.46, 0.48, 0.50, 0.52, 0.54, 0.56, 0.58, 0.60]
+  # 反手阈值
+  reversal_threshold: [0.56, 0.58, 0.62, 0.66]
+  # 止盈 / 初始止损
+  tp_pct: [0.010, 0.012, 0.015, 0.018, 0.020]
+  sl_pct: [0.006, 0.008, 0.010, 0.012, 0.015]
+  # 是否启用移动止损（档位见 fixed.trail_levels）
+  trail_stop_enabled: [true, false]

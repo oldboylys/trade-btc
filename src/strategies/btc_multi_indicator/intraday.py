@@ -2,10 +2,14 @@
 from __future__ import annotations
 
 from decimal import Decimal
-from typing import Any
+from typing import Any, Optional
 
-from src.core.models import Exchange, Kline, PositionSide, SignalDirection
+from src.core.clock import get_clock
+from src.core.logging import get_logger
+from src.core.models import Exchange, Kline, PositionSide, SignalDirection, TargetPosition
 from src.strategies.btc_multi_indicator.strategy import BTCMultiIndicatorStrategy
+
+logger = get_logger("strategy.btc_multi_indicator_v2")
 
 
 class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
@@ -50,6 +54,12 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         sl_pct: float = 0.01,
         trail_stop_enabled: bool = True,
         trail_levels: list[tuple[float, float]] | None = None,
+        use_dynamic_tp: bool = False,
+        tp_pct_min: float = 0.015,
+        tp_pct_max: float = 0.08,
+        reentry_after_tp_enabled: bool = False,
+        reentry_after_tp_bars: int = 24,
+        reentry_score_mult: float = 0.85,
         rsi_1h_long_max: float = 78.0,
     ) -> None:
         # 父类 RSI 区间仅用于评分权重：对齐极端区
@@ -90,8 +100,16 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             trail_levels or [(0.50, 0.25), (0.80, 0.40)],
             key=lambda x: x[0],
         )
+        self.use_dynamic_tp = use_dynamic_tp
+        self.tp_pct_min = tp_pct_min
+        self.tp_pct_max = tp_pct_max
+        self.reentry_after_tp_enabled = reentry_after_tp_enabled
+        self.reentry_after_tp_bars = reentry_after_tp_bars
+        self.reentry_score_mult = reentry_score_mult
         self._account_equity: Decimal = Decimal("0")
         self._prev_vol_ratio: float = 1.0
+        self._reentry_side: str | None = None
+        self._reentry_bars_left: int = 0
 
     def set_account_equity(self, equity: Decimal) -> None:
         """由 runner / 回测在每根 K 线前注入（余额 + 浮动盈亏）."""
@@ -138,7 +156,122 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             sl_pct=float(cfg.get("sl_pct", 0.01)),
             trail_stop_enabled=bool(cfg.get("trail_stop_enabled", True)),
             trail_levels=parse_trail_levels(cfg),
+            use_dynamic_tp=bool(cfg.get("use_dynamic_tp", False)),
+            tp_pct_min=float(cfg.get("tp_pct_min", 0.015)),
+            tp_pct_max=float(cfg.get("tp_pct_max", 0.08)),
+            reentry_after_tp_enabled=bool(cfg.get("reentry_after_tp_enabled", False)),
+            reentry_after_tp_bars=int(cfg.get("reentry_after_tp_bars", 24)),
+            reentry_score_mult=float(cfg.get("reentry_score_mult", 0.85)),
             rsi_1h_long_max=float(cfg.get("rsi_1h_long_max", 78)),
+        )
+
+    def on_trade_closed(self, event: dict) -> None:
+        """止盈平仓后，在后续若干根 K 线内允许趋势续开."""
+        if not self.reentry_after_tp_enabled:
+            return
+        if event.get("close_reason") != "止盈":
+            return
+        side = event.get("direction")
+        if side in ("LONG", "SHORT"):
+            self._reentry_side = side
+            self._reentry_bars_left = self.reentry_after_tp_bars
+            logger.info(
+                "reentry_armed",
+                side=side,
+                bars=self.reentry_after_tp_bars,
+            )
+
+    def _resolve_tp_pct(
+        self,
+        direction: SignalDirection,
+        confidence: float,
+        trend: dict[str, float],
+        primary: dict[str, float],
+    ) -> float:
+        if not self.use_dynamic_tp:
+            return self.tp_pct
+        lo, hi = self.tp_pct_min, self.tp_pct_max
+        span = max(0.05, 1.0 - self.signal_threshold)
+        prog = min(1.0, max(0.0, (confidence - self.signal_threshold) / span))
+        tp = lo + (hi - lo) * prog
+        if direction == SignalDirection.LONG and self._trend_bullish_1h(trend):
+            tp = min(hi, tp + 0.005)
+        elif direction == SignalDirection.SHORT and self._trend_bearish_1h(trend):
+            tp = min(hi, tp + 0.005)
+        _, is_surge = self._vol_spike_flags(float(primary.get("vol_ratio", 1.0)))
+        if is_surge:
+            tp = min(hi, tp + 0.003)
+        macd = float(primary.get("macd_hist", 0))
+        if direction == SignalDirection.LONG and macd > 0:
+            tp = min(hi, tp * 1.05)
+        elif direction == SignalDirection.SHORT and macd < 0:
+            tp = min(hi, tp * 1.05)
+        return max(lo, min(hi, tp))
+
+    def _trend_still_favors(
+        self,
+        direction: SignalDirection,
+        trend: dict[str, float],
+        primary: dict[str, float],
+    ) -> bool:
+        if direction == SignalDirection.LONG:
+            if self._trend_bullish_1h(trend):
+                return True
+            if self.require_5m_trend:
+                ema20 = primary.get("ema20", 0)
+                ema50 = primary.get("ema50", 0)
+                return ema20 > ema50 > 0
+            return False
+        if direction == SignalDirection.SHORT:
+            if self._trend_bearish_1h(trend):
+                return True
+            if self.require_5m_trend:
+                ema20 = primary.get("ema20", 0)
+                ema50 = primary.get("ema50", 0)
+                return ema20 < ema50 and ema50 > 0
+        return False
+
+    def _try_reentry_after_tp(
+        self,
+        long_score: float,
+        short_score: float,
+        trend: dict[str, float],
+        primary: dict[str, float],
+        close: Decimal,
+    ) -> TargetPosition | None:
+        if self._reentry_bars_left <= 0 or not self._reentry_side:
+            return None
+        self._reentry_bars_left -= 1
+        direction = (
+            SignalDirection.LONG
+            if self._reentry_side == "LONG"
+            else SignalDirection.SHORT
+        )
+        score = long_score if direction == SignalDirection.LONG else short_score
+        opposite = short_score if direction == SignalDirection.LONG else long_score
+        if not self._trend_still_favors(direction, trend, primary):
+            return None
+        thresh = self.signal_threshold * self.reentry_score_mult
+        if score < thresh or score < opposite + self.min_score_edge * 0.5:
+            return None
+        if not self._passes_5m_trend_gate(direction, primary):
+            return None
+        if not self._passes_rsi_1h_filter(direction, trend):
+            return None
+        tp_pct = self._resolve_tp_pct(direction, score, trend, primary)
+        logger.info(
+            "reentry_after_tp",
+            side=direction.value,
+            score=round(score, 3),
+            tp_pct=round(tp_pct, 4),
+            bars_left=self._reentry_bars_left,
+        )
+        return self.build_target(
+            direction,
+            close,
+            confidence=score,
+            reason="reentry_after_tp",
+            tp_pct=tp_pct,
         )
 
     def build_target(
@@ -147,19 +280,18 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         close: Decimal,
         confidence: float = 0.0,
         reason: str = "",
-    ):
-        from src.core.clock import get_clock
-        from src.core.models import SignalDirection, TargetPosition
-
+        tp_pct: float | None = None,
+    ) -> TargetPosition:
         notional = self._target_notional()
+        pct = tp_pct if tp_pct is not None else self.tp_pct
         tp_price = sl_price = None
         if direction == SignalDirection.LONG:
             qty = (notional / close).quantize(Decimal("0.001"))
-            tp_price = (close * Decimal(str(1 + self.tp_pct))).quantize(Decimal("0.1"))
+            tp_price = (close * Decimal(str(1 + pct))).quantize(Decimal("0.1"))
             sl_price = (close * Decimal(str(1 - self.sl_pct))).quantize(Decimal("0.1"))
         elif direction == SignalDirection.SHORT:
             qty = (notional / close).quantize(Decimal("0.001"))
-            tp_price = (close * Decimal(str(1 - self.tp_pct))).quantize(Decimal("0.1"))
+            tp_price = (close * Decimal(str(1 - pct))).quantize(Decimal("0.1"))
             sl_price = (close * Decimal(str(1 + self.sl_pct))).quantize(Decimal("0.1"))
         else:
             qty = Decimal("0")
@@ -175,6 +307,96 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
             reason=reason,
             ts_ms=get_clock().now_ms(),
         )
+
+    def on_kline(
+        self,
+        kline: Kline,
+        position_side: PositionSide | None = None,
+    ) -> TargetPosition | None:
+        if kline.symbol != self.symbol:
+            return None
+
+        if kline.interval != self.primary_tf:
+            self.feed_auxiliary_kline(kline)
+            return None
+
+        self._pipeline.feed(kline)
+        primary = self._pipeline.get_features(self.primary_tf)
+        trend = self._pipeline.get_features(self.trend_tf)
+
+        if not primary or not trend:
+            return None
+
+        long_score, short_score = self._score(primary, trend)
+        logger.info(
+            "strategy_scores",
+            interval=kline.interval,
+            long=round(long_score, 3),
+            short=round(short_score, 3),
+            entry_threshold=self.signal_threshold,
+            reversal_threshold=self.reversal_threshold,
+            close=float(kline.close),
+            position=position_side.value if position_side else "flat",
+        )
+        close = Decimal(str(primary.get("close", 0)))
+        if close <= 0:
+            return None
+
+        want_long = self._entry_allowed(SignalDirection.LONG, long_score, short_score, trend)
+        want_short = self._entry_allowed(SignalDirection.SHORT, short_score, long_score, trend)
+
+        direction = SignalDirection.FLAT
+        confidence = 0.0
+        reason = ""
+
+        if position_side == PositionSide.LONG:
+            if self._reversal_allowed(SignalDirection.SHORT, short_score, long_score, trend):
+                direction = SignalDirection.SHORT
+                confidence = short_score
+                reason = "reversal"
+            else:
+                return None
+        elif position_side == PositionSide.SHORT:
+            if self._reversal_allowed(SignalDirection.LONG, long_score, short_score, trend):
+                direction = SignalDirection.LONG
+                confidence = long_score
+                reason = "reversal"
+            else:
+                return None
+        else:
+            reentry = self._try_reentry_after_tp(long_score, short_score, trend, primary, close)
+            if reentry is not None:
+                return reentry
+            if want_long:
+                direction = SignalDirection.LONG
+                confidence = long_score
+                reason = "entry"
+            elif want_short:
+                direction = SignalDirection.SHORT
+                confidence = short_score
+                reason = "entry"
+            else:
+                return None
+
+        tp_pct = self._resolve_tp_pct(direction, confidence, trend, primary)
+        target = self.build_target(
+            direction,
+            close,
+            confidence=confidence,
+            reason=reason,
+            tp_pct=tp_pct,
+        )
+        logger.info(
+            "signal",
+            direction=direction.value,
+            confidence=round(confidence, 3),
+            close=float(close),
+            tp_pct=round(tp_pct, 4),
+            tp=float(target.tp_price) if target.tp_price else None,
+            sl=float(target.sl_price) if target.sl_price else None,
+            reason=reason,
+        )
+        return target
 
     def _is_rsi_oversold(self, rsi: float) -> bool:
         return rsi <= self.rsi_oversold_max

@@ -2,7 +2,7 @@
 mode: paper  # paper | testnet | live
 
 strategy:
-  default: btc_multi_indicator  # CLI 未指定 --strategy 时使用
+  default: btc_multi_indicator_v2  # CLI 未指定 --strategy 时使用
 
 exchanges:
   binance:
@@ -45,39 +45,42 @@ strategies:
     rsi_1h_long_max: 72          # 1h RSI 过热时不追多（高 RSI 簇）
   # 日内取向：更多开单、更紧 TP/SL，详见 docs/strategies.md
   btc_multi_indicator_v2:
-    enabled: false
+    enabled: true
     symbol: BTCUSDT
     timeframe: 5m
     trend_timeframe: 1h
-    signal_threshold: 0.52       # 日内开仓得分阈值
-    reversal_threshold: 0.62
-    min_score_edge: 0.05         # 多空得分至少拉开 0.05
-    require_1h_trend: false      # 不硬性要求 1h 同向
-    require_5m_trend: true       # 5m EMA20/50 与方向一致
-    use_1h_soft_filter: true     # 1h 逆势时需更高得分
+    signal_threshold: 0.46
+    reversal_threshold: 0.58
+    min_score_edge: 0.05
+    require_1h_trend: false
+    require_5m_trend: true
+    use_1h_soft_filter: true
     soft_1h_extra_threshold: 0.08
-    trend_penalty_1h: 0.12       # 软过滤扣分（波段版硬过滤 -0.35）
-    # --- 开仓 ---
-    use_position_pct: true       # 按账户权益比例开仓（复利）
-    position_pct: 0.30           # 每次名义 = 权益 × 30%
-    max_position_usdt: 100000    # use_position_pct=false 时的固定名义上限
-    # --- 止盈 / 止损（开仓时挂条件单，相对开仓价）---
-    tp_pct: 0.015                # 止盈 1.5%
-    sl_pct: 0.01                 # 初始止损 1%
-    # --- 移动止损（持仓中向 TP 推进后递进抬止损，仅以下两档）---
+    trend_penalty_1h: 0.12
+    use_position_pct: true
+    position_pct: 0.25              # 纸交易默认 25% 权益（与扫参参考 run 一致）
+    max_position_usdt: 100000
+    tp_pct: 0.018
+    sl_pct: 0.01
     trail_stop_enabled: true
     trail_levels:
-      - [0.50, 0.25]            # 推进至 entry→TP 的 50% 时，止损抬至 25% 处
-      - [0.80, 0.40]            # 推进至 80% 时，止损抬至 40% 处
-    rsi_oversold_max: 15         # 仅 RSI<=15 允许做多（超卖极端）
-    rsi_overbought_min: 75       # 仅 RSI>=75 允许做空（超买极端）
+      - [0.50, 0.25]
+      - [0.80, 0.40]
+    rsi_oversold_max: 12
+    rsi_overbought_min: 75
     require_rsi_extreme: true
-    vol_spike_ratio: 1.8         # 成交量/20均量 >= 此值视为放量
-    vol_surge_mult: 1.25         # 相对上一根 5m 量能继续跳升
-    vol_spike_score_bonus: 0.12  # 放量+极端 RSI 加分
+    vol_spike_ratio: 2.0
+    vol_surge_mult: 1.25
+    vol_spike_score_bonus: 0.12
     vol_spike_mid_rsi_penalty: 0.25
     require_vol_spike_for_entry: false
     rsi_1h_long_max: 78
+    use_dynamic_tp: true
+    tp_pct_min: 0.015
+    tp_pct_max: 0.08
+    reentry_after_tp_enabled: true
+    reentry_after_tp_bars: 24
+    reentry_score_mult: 0.85
   funding_arb:
     enabled: false
     min_funding_spread: 0.0002   # 最小套利价差 0.02%
@@ -120,8 +123,8 @@ strategies:
     reversal_threshold: 0.75
 
 risk:
-  max_position_usdt: 20000
-  max_single_order_usdt: 50000      # 支持 V2 30% 权益仓位（10万本金约 3万/笔）
+  max_position_usdt: 500000
+  max_single_order_usdt: 500000     # 支持 V2 按权益比例开仓（10万 × 25% ≈ 2.5万/笔）
   max_daily_loss_usdt: 1000
   max_consecutive_losses: 5
   price_deviation_pct: 0.05    # 行情异常保护 5%

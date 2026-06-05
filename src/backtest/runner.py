@@ -172,6 +172,9 @@ class BacktestRunner:
         def _on_close(event: dict) -> None:
             if self.trade_close_hook is not None:
                 self.trade_close_hook(event)
+            on_closed = getattr(self.strategy, "on_trade_closed", None)
+            if callable(on_closed):
+                on_closed(event)
             ledger.on_trade_closed(event)
 
         paper_ex.position_book.set_trade_close_hook(_on_close)
@@ -204,11 +207,7 @@ class BacktestRunner:
             if self.bar_hook is not None:
                 self.bar_hook(kline, paper_ex)
 
-            set_strategy_equity(
-                self.strategy,
-                paper_ex.balance,
-                paper_ex.position_book.total_unrealized_pnl(),
-            )
+            set_strategy_equity(self.strategy, paper_ex.total_equity())
 
             pos_entry = paper_ex.position_book.get_position(kline.symbol)
             current_side = pos_entry.side if pos_entry and pos_entry.qty > 0 else None
@@ -228,21 +227,21 @@ class BacktestRunner:
                 )
 
             bar_count += 1
+            bal = paper_ex.total_equity()
             if bar_count % 100 == 0:
-                bal = paper_ex.balance + paper_ex.position_book.total_unrealized_pnl()
                 equity_samples.append((kline.close_time, float(bal)))
-                if bal > peak_balance:
-                    peak_balance = bal
-                drawdown = (
-                    (peak_balance - bal) / peak_balance * 100
-                    if peak_balance > 0
-                    else Decimal("0")
-                )
-                if drawdown > report.max_drawdown:
-                    report.max_drawdown = Decimal(str(drawdown))
+            if bal > peak_balance:
+                peak_balance = bal
+            drawdown = (
+                (peak_balance - bal) / peak_balance * 100
+                if peak_balance > 0
+                else Decimal("0")
+            )
+            if drawdown > report.max_drawdown:
+                report.max_drawdown = Decimal(str(drawdown))
 
         summary: LedgerSummary = ledger.summary()
-        report.final_balance = paper_ex.balance + paper_ex.position_book.total_unrealized_pnl()
+        report.final_balance = paper_ex.total_equity()
         report.realized_pnl = summary.total_net_pnl
         report.total_fee = paper_ex.position_book.total_fee
         report.equity_curve = equity_samples

@@ -72,13 +72,42 @@ class PaperExchange(IExchange):
 
     # ---- IExchange 实现 ----
 
+    def position_mark_value(self) -> Decimal:
+        """持仓按标记价计价的绝对名义（保证金占用）。"""
+        total = Decimal("0")
+        for entry in self._position_book.get_all_positions():
+            if entry.qty > 0:
+                total += entry.mark_price * entry.qty
+        return total
+
+    def total_equity(self) -> Decimal:
+        """
+        账户净值：现金 + 多头市值 - 空头负债。
+        不可用 balance + unrealized_pnl（空头会把卖出所得重复计入权益）。
+        """
+        eq = self._balance
+        for entry in self._position_book.get_all_positions():
+            if entry.qty <= 0:
+                continue
+            mv = entry.mark_price * entry.qty
+            if entry.side == PositionSide.LONG:
+                eq += mv
+            else:
+                eq -= mv
+        return eq
+
+    @property
+    def available_equity(self) -> Decimal:
+        """可用于新开仓的权益（净值减去已占用名义）。"""
+        return max(Decimal("0"), self.total_equity() - self.position_mark_value())
+
     async def get_balance(self, asset: str = "USDT") -> AccountBalance:
         upnl = self._position_book.total_unrealized_pnl()
         return AccountBalance(
             exchange=Exchange.SIM,
             asset=asset,
-            total=self._balance + upnl,
-            available=self._balance,
+            total=self.total_equity(),
+            available=self.available_equity,
             unrealized_pnl=upnl,
         )
 

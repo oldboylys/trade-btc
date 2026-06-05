@@ -7,8 +7,7 @@ from typing import Any
 DEFAULT_TRAIL_LEVELS: list[tuple[float, float]] = [(0.50, 0.25), (0.80, 0.40)]
 
 
-def set_strategy_equity(strategy: Any, balance: Decimal, unrealized_pnl: Decimal) -> None:
-    equity = balance + unrealized_pnl
+def set_strategy_equity(strategy: Any, equity: Decimal) -> None:
     if hasattr(strategy, "set_account_equity"):
         strategy.set_account_equity(equity)
 

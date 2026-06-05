@@ -119,11 +119,7 @@ class KlineStrategyRunner:
                 open_time=kline.open_time,
             )
             paper_ex.feed_kline(kline)
-            set_strategy_equity(
-                strategy,
-                paper_ex.balance,
-                paper_ex.position_book.total_unrealized_pnl(),
-            )
+            set_strategy_equity(strategy, paper_ex.total_equity())
             store.mark_price = float(kline.close)
             store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
             store.balance = float(paper_ex.balance)

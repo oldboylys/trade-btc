@@ -197,6 +197,7 @@ class PositionBook:
             pos.side = PositionSide.LONG if fill.side == OrderSide.BUY else PositionSide.SHORT
             pos.qty = fill.qty
             pos.entry_price = fill.price
+            pos.mark_price = fill.price
             logger.info(
                 "position_opened",
                 symbol=fill.symbol,

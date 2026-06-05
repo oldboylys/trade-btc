@@ -3,7 +3,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.core.models import Exchange, Kline, Order, OrderSide, OrderStatus, OrderType
+from src.core.models import Exchange, Kline, Order, OrderSide, OrderStatus, OrderType, PositionSide
 from src.sim.paper_exchange import PaperExchange
 
 
@@ -102,3 +102,59 @@ async def test_balance_decreases_after_buy(paper_ex):
     )
     await paper_ex.place_order(order)
     assert paper_ex.balance < initial_balance
+
+
+@pytest.mark.asyncio
+async def test_total_equity_long_unchanged_at_entry(paper_ex):
+    """开多后净值应等于初始资金（标记价=入场价）。"""
+    initial = paper_ex.total_equity()
+    paper_ex.feed_kline(make_kline(50000))
+    order = Order(
+        client_order_id="eq_long",
+        exchange=Exchange.SIM,
+        symbol="BTCUSDT",
+        side=OrderSide.BUY,
+        order_type=OrderType.MARKET,
+        qty=Decimal("1.0"),
+    )
+    await paper_ex.place_order(order)
+    # 开仓手续费使净值略低于初始
+    assert paper_ex.total_equity() >= initial - Decimal("50")
+    assert paper_ex.total_equity() <= initial
+
+
+@pytest.mark.asyncio
+async def test_total_equity_short_not_double_counted(paper_ex):
+    """开空后净值不应因卖出所得虚增。"""
+    initial = paper_ex.total_equity()
+    paper_ex.feed_kline(make_kline(50000))
+    order = Order(
+        client_order_id="eq_short",
+        exchange=Exchange.SIM,
+        symbol="BTCUSDT",
+        side=OrderSide.SELL,
+        order_type=OrderType.MARKET,
+        qty=Decimal("1.0"),
+    )
+    await paper_ex.place_order(order)
+    pos = await paper_ex.get_position("BTCUSDT")
+    assert pos is not None
+    assert pos.side == PositionSide.SHORT
+    assert paper_ex.total_equity() >= initial - Decimal("50")
+    assert paper_ex.total_equity() <= initial
+
+
+@pytest.mark.asyncio
+async def test_balance_plus_upnl_differs_from_total_equity_on_short(paper_ex):
+    paper_ex.feed_kline(make_kline(50000))
+    order = Order(
+        client_order_id="eq_legacy",
+        exchange=Exchange.SIM,
+        symbol="BTCUSDT",
+        side=OrderSide.SELL,
+        order_type=OrderType.MARKET,
+        qty=Decimal("1.0"),
+    )
+    await paper_ex.place_order(order)
+    legacy = paper_ex.balance + paper_ex.position_book.total_unrealized_pnl()
+    assert legacy > paper_ex.total_equity()

@@ -97,8 +97,11 @@ python -m apps.backtest.main --strategy btc_multi_indicator_v2 --force --start 2
 批量改参、回测并写入对比表（`reports/sweeps/btc_v2/`）：
 
 ```bash
-# 网格扫参（YAML 定义 Cartesian 积，建议首次加 --max-runs）
-python scripts/sweep_btc_v2.py --grid config/sweeps/btc_v2_grid.yaml --max-runs 24 --resume
+# 网格扫参（2000 组：signal 0.42–0.60、tp/sl 扩区间、trail 开/关；建议 --resume）
+python scripts/sweep_btc_v2.py --grid config/sweeps/btc_v2_grid.yaml --resume
+python scripts/sweep_btc_v2.py --grid config/sweeps/btc_v2_grid.yaml --max-runs 48 --resume
+# RSI / 放量 / 仓位比例 用 --set 单点试探，例如：
+python scripts/sweep_btc_v2.py --set vol_spike_ratio=2.0 --set position_pct=0.35 --resume
 
 # 单次改参并追加记录
 python scripts/sweep_btc_v2.py --set signal_threshold=0.52 --set vol_spike_ratio=2.0

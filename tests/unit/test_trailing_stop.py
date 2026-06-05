@@ -65,3 +65,22 @@ def test_position_pct_notional():
     s = BTCMultiIndicatorIntradayStrategy(use_position_pct=True, position_pct=0.30)
     s.set_account_equity(Decimal("100000"))
     assert s._target_notional() == Decimal("30000.00")
+
+
+def test_dynamic_tp_in_range():
+    from src.core.models import SignalDirection
+    from src.strategies.btc_multi_indicator.intraday import BTCMultiIndicatorIntradayStrategy
+
+    s = BTCMultiIndicatorIntradayStrategy(
+        signal_threshold=0.46,
+        use_dynamic_tp=True,
+        tp_pct_min=0.015,
+        tp_pct_max=0.08,
+    )
+    tp = s._resolve_tp_pct(
+        SignalDirection.LONG,
+        0.7,
+        {"ema20": 100, "ema50": 90, "rsi14": 50},
+        {"vol_ratio": 2.0, "macd_hist": 10},
+    )
+    assert 0.015 <= tp <= 0.08
