@@ -56,9 +56,9 @@ strategies:
     require_5m_trend: true
     use_1h_soft_filter: true
     soft_1h_extra_threshold: 0.08
-    trend_penalty_1h: 0.12
+    trend_penalty_1h: 0.08           # 1h 逆势时对多头的扣分略减
     use_position_pct: true
-    position_pct: 0.25              # 纸交易默认 25% 权益（与扫参参考 run 一致）
+    position_pct: 1.0                 # 满仓：每次名义 = 权益 × 100%
     max_position_usdt: 100000
     tp_pct: 0.018
     sl_pct: 0.01
@@ -66,15 +66,15 @@ strategies:
     trail_levels:
       - [0.50, 0.25]
       - [0.80, 0.40]
-    rsi_oversold_max: 12
-    rsi_overbought_min: 75
+    rsi_oversold_max: 22              # 放宽做多：5m RSI≤22 视为超卖（原 12 极少触发）
+    rsi_overbought_min: 78            # 略提高做空门槛，多空更均衡
     require_rsi_extreme: true
     vol_spike_ratio: 2.0
     vol_surge_mult: 1.25
     vol_spike_score_bonus: 0.12
     vol_spike_mid_rsi_penalty: 0.25
     require_vol_spike_for_entry: false
-    rsi_1h_long_max: 78
+    rsi_1h_long_max: 82              # 1h RSI 上限放宽，减少做多被 1h 过滤
     use_dynamic_tp: true
     tp_pct_min: 0.015
     tp_pct_max: 0.08

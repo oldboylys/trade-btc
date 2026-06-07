@@ -111,6 +111,12 @@ class KlineStrategyRunner:
 
         bus = get_bus()
 
+        def _sync_account_store() -> None:
+            store.equity = float(paper_ex.total_equity())
+            store.balance = float(paper_ex.available_equity())
+            store.cash_balance = float(paper_ex.balance)
+            store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
+
         async def on_kline_closed(kline) -> None:
             logger.info(
                 "kline_closed_received",
@@ -122,8 +128,7 @@ class KlineStrategyRunner:
             set_strategy_equity(strategy, paper_ex.total_equity())
             store.mark_price = float(kline.close)
             store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
-            store.balance = float(paper_ex.balance)
-            store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
+            _sync_account_store()
             store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
             store.total_fee = float(paper_ex.position_book.total_fee)
 
@@ -154,8 +159,7 @@ class KlineStrategyRunner:
                 register_trailing_if_needed(
                     paper_ex.position_book, strategy, kline.symbol,
                 )
-                store.balance = float(paper_ex.balance)
-                store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
+                _sync_account_store()
                 store.daily_realized_pnl = float(paper_ex.position_book.daily_realized_pnl)
                 store.total_fee = float(paper_ex.position_book.total_fee)
 
@@ -171,12 +175,12 @@ class KlineStrategyRunner:
                 store.mark_price = round(mid, 2)
                 store.price_updated_at = datetime.datetime.now().strftime("%H:%M:%S")
                 paper_ex.position_book.update_mark_price(ob.symbol, Decimal(str(mid)))
+                _sync_account_store()
                 if store.has_position:
                     pos = paper_ex.position_book.get_position(ob.symbol)
                     if pos:
                         store.pos_mark_price = round(mid, 2)
                         store.pos_upnl = float(pos.unrealized_pnl)
-                        store.unrealized_pnl = float(paper_ex.position_book.total_unrealized_pnl())
 
         bus.subscribe(EVT_ORDERBOOK, on_orderbook)
 
@@ -228,8 +232,8 @@ class KlineStrategyRunner:
             now = (datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(hours=8)).strftime(
                 "%Y-%m-%d %H:%M UTC+8",
             )
-            bal = paper_ex.balance
-            upnl = paper_ex.position_book.total_unrealized_pnl()
+            bal = paper_ex.available_equity()
+            equity = paper_ex.total_equity()
             total_realized = paper_ex.position_book.daily_realized_pnl
             all_pos = paper_ex.position_book.get_all_positions()
             btc_price = store.mark_price
@@ -247,6 +251,7 @@ class KlineStrategyRunner:
                 f"时间：{now}\n"
                 f"BTC 现价：${btc_price:,.2f}\n"
                 f"{pos_lines}"
+                f"账户净值：${float(equity):,.2f} USDT\n"
                 f"可用余额：${float(bal):,.2f} USDT\n"
             )
             if tg_enabled:

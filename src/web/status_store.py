@@ -40,7 +40,9 @@ class StatusStore:
     price_updated_at: str = ""
 
     # 账户
-    balance: float = 100000.0
+    balance: float = 100000.0          # 可用余额（可开新仓权益）
+    equity: float = 100000.0            # 账户净值
+    cash_balance: float = 100000.0       # 现金账本（含空头卖出所得）
     unrealized_pnl: float = 0.0
     daily_realized_pnl: float = 0.0
     total_fee: float = 0.0
@@ -128,8 +130,9 @@ class StatusStore:
                 "updated_at": self.price_updated_at,
             },
             "account": {
+                "equity": round(self.equity, 2),
                 "balance": round(self.balance, 2),
-                "equity": round(self.balance + self.unrealized_pnl, 2),
+                "cash_balance": round(self.cash_balance, 2),
                 "unrealized_pnl": round(self.unrealized_pnl, 2),
                 "daily_realized_pnl": round(self.daily_realized_pnl, 2),
                 "total_fee": round(self.total_fee, 2),

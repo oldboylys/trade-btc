@@ -436,7 +436,7 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         rsi = primary.get("rsi14", 50)
         # 极端超卖反弹：允许略逆 5m 空头排列；极端超买回落同理
         if direction == SignalDirection.LONG and self._is_rsi_oversold(rsi):
-            return ema20 > ema50 * 0.998 or ema50 <= 0
+            return ema20 > ema50 * 0.992 or ema50 <= 0
         if direction == SignalDirection.SHORT and self._is_rsi_overbought(rsi):
             return ema20 < ema50 * 1.002 and ema50 > 0
         if direction == SignalDirection.LONG:
@@ -531,8 +531,8 @@ class BTCMultiIndicatorIntradayStrategy(BTCMultiIndicatorStrategy):
         is_surge = is_spike and vol_ratio >= self._prev_vol_ratio * self.vol_surge_mult
 
         if self._is_rsi_oversold(rsi):
-            long_score = min(1.0, long_score + 0.15)
-            short_score = max(0.0, short_score - 0.20)
+            long_score = min(1.0, long_score + 0.18)
+            short_score = max(0.0, short_score - 0.22)
         elif self._is_rsi_overbought(rsi):
             short_score = min(1.0, short_score + 0.15)
             long_score = max(0.0, long_score - 0.20)
