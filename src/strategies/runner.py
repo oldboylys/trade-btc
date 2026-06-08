@@ -32,6 +32,7 @@ logger = get_logger("strategies.runner")
 _STRATEGY_LABELS = {
     "btc_multi_indicator": "BTC 多指标波段（Coolish）",
     "btc_multi_indicator_v2": "BTC 多指标日内 V2",
+    "btc_1m_scalp": "BTC 1m 剥头皮",
     "volume_profile": "Volume Profile",
     "ict": "ICT",
 }
@@ -348,7 +349,7 @@ class KlineStrategyRunner:
             return 0
         total = 0
         intervals = list(pipeline.intervals)
-        limits = {"1h": 150, "5m": 500, "1m": 350}
+        limits = {"1h": 150, "5m": 500, "1m": 500}
         for iv in intervals:
             limit = limits.get(iv, 200)
             try:

@@ -11,6 +11,8 @@ trader --mode paper --strategy btc_multi_indicator
 trader --mode paper --strategy btc              # 别名 → btc_multi_indicator
 trader --mode paper --strategy btc_multi_indicator_v2
 trader --mode paper --strategy btc_v2           # 别名 → 日内 V2
+trader --mode paper --strategy btc_1m_scalp
+trader --mode paper --strategy btc_scalp        # 别名 → 1m 剥头皮
 trader --mode paper --strategy volume_profile
 trader --mode paper --strategy ict
 trader --mode paper --strategy funding_arb

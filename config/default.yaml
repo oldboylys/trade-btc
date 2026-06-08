@@ -2,7 +2,7 @@
 mode: paper  # paper | testnet | live
 
 strategy:
-  default: btc_multi_indicator_v2  # CLI 未指定 --strategy 时使用
+  default: btc_1m_scalp  # 1m 剥头皮开发分支默认策略
 
 exchanges:
   binance:
@@ -81,6 +81,27 @@ strategies:
     reentry_after_tp_enabled: true
     reentry_after_tp_bars: 24
     reentry_score_mult: 0.85
+  # 1m 剥头皮：多开单、吃小段反弹（详见 docs/strategies.md）
+  btc_1m_scalp:
+    enabled: true
+    symbol: BTCUSDT
+    timeframe: 1m
+    trend_timeframe: 5m
+    signal_threshold: 0.38
+    reversal_threshold: 0.52
+    min_score_edge: 0.03
+    rsi_long_max: 42          # 1m RSI≤42 且拐头向上 → 做多反弹
+    rsi_short_min: 58         # 1m RSI≥58 且拐头向下 → 做空回落
+    require_rebound: true       # 必须 RSI 拐头（剥头皮核心）
+    require_5m_not_opposed: true
+    use_position_pct: true
+    position_pct: 0.30
+    max_position_usdt: 100000
+    tp_pct: 0.005              # 止盈 0.5%
+    sl_pct: 0.004              # 止损 0.4%
+    vol_spike_ratio: 1.3
+    vol_score_bonus: 0.08
+    bb_bounce_bonus: 0.10
   funding_arb:
     enabled: false
     min_funding_spread: 0.0002   # 最小套利价差 0.02%

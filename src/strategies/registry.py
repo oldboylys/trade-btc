@@ -66,6 +66,7 @@ def bootstrap() -> None:
 
     from src.strategies.btc_multi_indicator.strategy import BTCMultiIndicatorStrategy
     from src.strategies.btc_multi_indicator.intraday import BTCMultiIndicatorIntradayStrategy
+    from src.strategies.btc_multi_indicator.scalp import BTC1mScalpStrategy
     from src.strategies.funding_arb.strategy import FundingArbStrategy
 
     register(
@@ -83,6 +84,14 @@ def bootstrap() -> None:
         description="BTC 多指标日内 V2（更高频、紧 TP/SL）",
     )
     register_alias("btc_v2", "btc_multi_indicator_v2")
+
+    register(
+        "btc_1m_scalp",
+        BTC1mScalpStrategy.from_config,
+        kind="kline",
+        description="BTC 1m 剥头皮（小段反弹、紧 TP/SL）",
+    )
+    register_alias("btc_scalp", "btc_1m_scalp")
 
     register(
         "funding_arb",
