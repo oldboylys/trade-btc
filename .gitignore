@@ -14,6 +14,7 @@ config/secrets.local.toml
 *.sqlite
 *.sqlite3
 logs/
+reports/sweeps/**/*.log
 data/
 .coverage
 coverage.xml
